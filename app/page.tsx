@@ -39,14 +39,13 @@ const LEGAL_AREAS = [
 ];
 
 const DOCUMENTS = [
-  "Constitution of The Gambia",
+  "Constitution of The Gambia (1997)",
   "Labour Act 2023",
-  "Criminal Code",
+  "Criminal Code 1933",
+  "Criminal Offences Act 2025",
+  "Criminal Procedure Act 2025",
   "Children's Act 2005",
-  "Women's Act 2010",
   "Consumer Protection Act 2014",
-  "Domestic Violence Act 2013",
-  "Immigration Act",
   "Land Acquisition Act",
 ];
 
@@ -169,7 +168,7 @@ export default function Home() {
             Legal areas covered
           </h3>
           <p className="text-center text-sm text-text-secondary mb-12">
-            Grounded in 10+ Gambian Acts and legal documents
+            Grounded in 8 Gambian Acts and legal documents
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {LEGAL_AREAS.map((area) => (
@@ -210,11 +209,22 @@ export default function Home() {
           <p className="text-sm text-text-secondary mb-8">
             Our AI is grounded in official Gambian legal documents
           </p>
-          <div className="flex flex-wrap justify-center gap-3">
+          <div className="flex flex-wrap justify-center gap-3 mb-6">
             {DOCUMENTS.map((doc) => (
               <span
                 key={doc}
-                className="px-3 py-1.5 bg-surface border border-border rounded-lg text-xs font-mono text-text-secondary"
+                className="px-3 py-1.5 bg-accent-green/5 border border-accent-green/20 rounded-lg text-xs font-mono text-accent-green/80"
+              >
+                {doc}
+              </span>
+            ))}
+          </div>
+          <p className="text-xs text-text-muted mb-3">Coming soon</p>
+          <div className="flex flex-wrap justify-center gap-3">
+            {["Women's Act 2010", "Domestic Violence Act 2013", "Rent Act 2014", "Immigration Act"].map((doc) => (
+              <span
+                key={doc}
+                className="px-3 py-1.5 bg-surface border border-border rounded-lg text-xs font-mono text-text-muted"
               >
                 {doc}
               </span>
