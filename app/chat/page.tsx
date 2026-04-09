@@ -22,10 +22,7 @@ export default function ChatPage() {
               Gamba Legal Aid
             </span>
           </Link>
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-accent-green pulse-dot" />
-            <span className="text-[11px] font-mono text-accent-green">Online</span>
-          </div>
+          <div />
         </div>
       </header>
 

@@ -108,9 +108,9 @@ export default function ChatInterface() {
   return (
     <div className="flex flex-col h-full">
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 space-y-6 overscroll-contain">
+      <div className={`flex-1 px-4 py-6 space-y-6 ${messages.length > 0 ? "overflow-y-auto overscroll-contain" : "overflow-hidden flex items-center justify-center"}`}>
         {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-center px-4">
+          <div className="flex flex-col items-center text-center px-4">
             <div className="mb-6">
               <h2 className="text-lg font-semibold text-text-primary mb-1.5">
                 How can I help you today?
