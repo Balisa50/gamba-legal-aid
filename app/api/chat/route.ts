@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     const query = lastUserMsg?.content ?? "";
 
     // Search legal documents for relevant context
-    const relevantChunks = await searchDocuments(query, 5);
+    const relevantChunks = await searchDocuments(query, 8);
 
     let context = "";
     if (relevantChunks.length > 0) {
