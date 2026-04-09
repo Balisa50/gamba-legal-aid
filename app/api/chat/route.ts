@@ -45,15 +45,15 @@ export async function POST(req: NextRequest) {
       .find((m: { role: string }) => m.role === "user");
     const query = lastUserMsg?.content ?? "";
 
-    // Search legal documents for relevant context
-    const relevantChunks = await searchDocuments(query, 8);
+    // Search legal documents for relevant context — fetch more chunks for richer answers
+    const relevantChunks = await searchDocuments(query, 12);
 
     let context = "";
     if (relevantChunks.length > 0) {
       context = relevantChunks
         .map(
-          (chunk) =>
-            `[${chunk.document_name} - ${chunk.section_title}]\n${chunk.content}`
+          (chunk, i) =>
+            `[Source ${i + 1}: ${chunk.document_name} - ${chunk.section_title}]\n${chunk.content}`
         )
         .join("\n\n---\n\n");
     }
@@ -62,14 +62,14 @@ export async function POST(req: NextRequest) {
 
 ${
   context
-    ? `RELEVANT LEGAL DOCUMENT EXCERPTS:\n\n${context}`
+    ? `RELEVANT LEGAL DOCUMENT EXCERPTS (you MUST cite these by Act name and Section/Article number in your answer):\n\n${context}`
     : "No specific legal documents were found for this query. Answer based on your general knowledge of Gambian law, but clearly state that you could not find the specific legal provision and recommend the user verify with a legal professional."
 }`;
 
     // Stream response
     const stream = await getGroq().chat.completions.create({
       model: "llama-3.3-70b-versatile",
-      max_tokens: 1024,
+      max_tokens: 2048,
       stream: true,
       messages: [
         { role: "system", content: systemPrompt },
