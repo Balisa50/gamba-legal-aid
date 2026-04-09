@@ -263,8 +263,7 @@ export default function ChatInterface() {
             </button>
           </div>
           <p className="text-[11px] text-text-muted text-center mt-2 font-mono">
-            General legal information only, not legal advice. Always consult a
-            qualified lawyer.
+            Grounded in 8 Gambian Acts of Parliament
           </p>
         </div>
       </div>

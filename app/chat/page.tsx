@@ -28,14 +28,9 @@ export default function ChatPage() {
                 />
               </svg>
             </div>
-            <div>
-              <h1 className="text-sm font-semibold tracking-tight">
-                Gamba Legal Aid
-              </h1>
-              <p className="text-[10px] font-mono text-text-muted uppercase tracking-wider">
-                AI Legal Assistant
-              </p>
-            </div>
+            <span className="text-sm font-semibold tracking-tight">
+              Gamba Legal Aid
+            </span>
           </Link>
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-accent-green pulse-dot" />
