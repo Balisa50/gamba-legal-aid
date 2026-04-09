@@ -51,12 +51,12 @@ export default function Home() {
             href="/chat"
             className="px-4 py-1.5 bg-accent-green text-background text-sm font-medium rounded-lg hover:bg-accent-green/90 transition-colors"
           >
-            Open Chat
+            Ask a question
           </Link>
         </div>
       </nav>
 
-      {/* Hero — straight to the point */}
+      {/* Hero */}
       <section className="flex-1 flex items-center justify-center px-6 py-20">
         <div className="max-w-2xl mx-auto text-center">
           <h1 className="text-4xl sm:text-5xl font-bold tracking-tight leading-[1.1] mb-5">
@@ -64,21 +64,12 @@ export default function Home() {
             <br />
             <span className="text-accent-green">under Gambian law.</span>
           </h1>
-          <p className="text-text-secondary text-lg mb-10 max-w-md mx-auto">
+          <p className="text-text-secondary text-lg max-w-md mx-auto">
             Ask a question. Get an answer grounded in real legislation.
           </p>
-          <Link
-            href="/chat"
-            className="inline-flex items-center gap-2 px-8 py-3.5 bg-accent-green text-background font-medium rounded-xl hover:bg-accent-green/90 transition-all hover:shadow-[0_0_40px_rgba(34,197,94,0.12)] text-base"
-          >
-            Ask a legal question
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
-            </svg>
-          </Link>
 
           {/* Stats */}
-          <div className="mt-16 grid grid-cols-3 gap-6">
+          <div className="mt-14 grid grid-cols-3 gap-6">
             {STATS.map((s) => (
               <div key={s.label}>
                 <div className="text-2xl font-bold text-accent-green font-mono">{s.value}</div>
