@@ -17,11 +17,24 @@ const SUGGESTED_QUESTIONS = [
 ];
 
 export default function ChatInterface() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("gla-messages");
+      if (saved) try { return JSON.parse(saved); } catch { /* ignore */ }
+    }
+    return [];
+  });
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Persist messages to localStorage
+  useEffect(() => {
+    if (messages.length > 0) {
+      localStorage.setItem("gla-messages", JSON.stringify(messages));
+    }
+  }, [messages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -108,7 +121,7 @@ export default function ChatInterface() {
   return (
     <div className="flex flex-col h-full">
       {/* Messages area */}
-      <div className={`flex-1 px-4 py-6 space-y-6 ${messages.length > 0 ? "overflow-y-auto overscroll-contain" : "overflow-hidden flex items-center justify-center"}`}>
+      <div className={`flex-1 px-4 py-6 space-y-6 overflow-y-auto hide-scrollbar ${messages.length === 0 ? "flex items-center justify-center" : ""}`}>
         {messages.length === 0 ? (
           <div className="flex flex-col items-center text-center px-4">
             <div className="mb-6">
@@ -245,9 +258,19 @@ export default function ChatInterface() {
               </svg>
             </button>
           </div>
-          <p className="text-[11px] text-text-muted text-center mt-2 font-mono">
-            Grounded in 8 Gambian Acts of Parliament
-          </p>
+          <div className="flex items-center justify-center gap-3 mt-2">
+            {messages.length > 0 && (
+              <button
+                onClick={() => { setMessages([]); localStorage.removeItem("gla-messages"); }}
+                className="text-[11px] text-text-muted hover:text-accent-green font-mono transition-colors"
+              >
+                New chat
+              </button>
+            )}
+            <p className="text-[11px] text-text-muted font-mono">
+              Grounded in 8 Gambian Acts of Parliament
+            </p>
+          </div>
         </div>
       </div>
     </div>

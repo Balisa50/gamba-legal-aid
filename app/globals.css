@@ -49,6 +49,15 @@ body {
   border-radius: 3px;
 }
 
+/* Hide scrollbar but keep scroll functional */
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Pulse animation */
 @keyframes pulse-glow {
   0%, 100% { opacity: 1; }
