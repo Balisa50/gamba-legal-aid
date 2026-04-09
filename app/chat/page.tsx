@@ -12,16 +12,9 @@ export default function ChatPage() {
       {/* Header */}
       <header className="flex-shrink-0 border-b border-border px-4 py-3">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center justify-center w-7 h-7 rounded-lg bg-surface border border-border hover:border-accent-green/30 transition-colors">
-              <svg className="w-3.5 h-3.5 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </Link>
-            <span className="text-sm font-semibold tracking-tight">
-              Gamba Legal Aid
-            </span>
-          </div>
+          <span className="text-sm font-semibold tracking-tight">
+            Gamba Legal Aid
+          </span>
           <div />
         </div>
       </header>

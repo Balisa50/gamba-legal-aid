@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import Link from "next/link";
 
 interface Message {
   role: "user" | "assistant";
@@ -121,7 +122,15 @@ export default function ChatInterface() {
   return (
     <div className="flex flex-col h-full">
       {/* Messages area */}
-      <div className={`flex-1 px-4 py-6 space-y-6 overflow-y-auto hide-scrollbar ${messages.length === 0 ? "flex items-center justify-center" : ""}`}>
+      <div className={`flex-1 px-4 py-6 space-y-6 overflow-y-auto hide-scrollbar ${messages.length === 0 ? "flex flex-col items-center justify-center" : ""}`}>
+        <div className={messages.length === 0 ? "self-start mb-2" : "mb-2"}>
+          <Link href="/" className="inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-accent-green transition-colors">
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back
+          </Link>
+        </div>
         {messages.length === 0 ? (
           <div className="flex flex-col items-center text-center px-4">
             <div className="mb-6">
