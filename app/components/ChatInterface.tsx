@@ -121,27 +121,29 @@ export default function ChatInterface() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Messages area */}
-      <div className={`flex-1 px-4 py-6 space-y-6 overflow-y-auto hide-scrollbar ${messages.length === 0 ? "flex flex-col items-center justify-center" : ""}`}>
-        <div className={`flex items-center justify-between ${messages.length === 0 ? "self-stretch mb-2" : "mb-2"}`}>
-          <Link href="/" className="inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-accent-green transition-colors">
+      {/* Sticky toolbar */}
+      <div className="flex-shrink-0 flex items-center justify-between px-4 pt-4 pb-2">
+        <Link href="/" className="inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-accent-green transition-colors">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+          Back
+        </Link>
+        {messages.length > 0 && (
+          <button
+            onClick={() => { setMessages([]); localStorage.removeItem("gla-messages"); }}
+            className="inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-red-400 transition-colors"
+          >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3" />
             </svg>
-            Back
-          </Link>
-          {messages.length > 0 && (
-            <button
-              onClick={() => { setMessages([]); localStorage.removeItem("gla-messages"); }}
-              className="inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-red-400 transition-colors"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3" />
-              </svg>
-              Wipe chat
-            </button>
-          )}
-        </div>
+            Wipe chat
+          </button>
+        )}
+      </div>
+
+      {/* Messages area */}
+      <div className={`flex-1 min-h-0 px-4 pb-6 pt-2 space-y-6 overflow-y-auto hide-scrollbar ${messages.length === 0 ? "flex flex-col items-center justify-center" : ""}`}>
         {messages.length === 0 ? (
           <div className="flex flex-col items-center text-center px-4">
             <div className="mb-6">
