@@ -59,13 +59,13 @@ export async function POST(req: NextRequest) {
       while ((m = re.exec(text)) !== null) {
         matches.add(m[1]);
       }
-      // Match standalone numbered headings like "91. Notice on termination"
-      const headingRe = /(?:^|\n)\s*(\d+[A-Za-z]?)\.\s+[A-Z]/g;
+      // Match numbered headings: "91. Notice on termination" — works inline too
+      const headingRe = /\b(\d{1,3}[A-Za-z]?)\.\s+[A-Z][a-z]/g;
       while ((m = headingRe.exec(text)) !== null) {
         matches.add(m[1]);
       }
-      const arr = Array.from(matches).slice(0, 5);
-      return arr.length > 0 ? `Sections: ${arr.join(", ")}` : "";
+      const arr = Array.from(matches).slice(0, 8);
+      return arr.length > 0 ? `Sections ${arr.join(", ")}` : "";
     }
 
     let context = "";
@@ -93,6 +93,9 @@ ${
     const stream = await getGroq().chat.completions.create({
       model: "llama-3.3-70b-versatile",
       max_tokens: 2048,
+      // Low temperature minimizes hallucination of section numbers and values
+      temperature: 0.2,
+      top_p: 0.9,
       stream: true,
       messages: [
         { role: "system", content: systemPrompt },

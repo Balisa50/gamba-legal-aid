@@ -25,6 +25,14 @@ const STOP_WORDS = new Set([
   "need", "like", "really", "much", "many", "going", "come",
 ]);
 
+// Common legal vocabulary that appears in nearly every chunk and is too
+// generic to anchor a search on. We keep them for ranking but never let
+// them dominate scoring.
+const LOW_SIGNAL = new Set([
+  "rights", "right", "law", "act", "section", "person", "may", "must",
+  "shall", "court", "person", "people", "gambia", "gambian",
+]);
+
 // Simple stemming: strip common English suffixes to get root word
 function stem(word: string): string {
   return word
@@ -50,6 +58,36 @@ function stem(word: string): string {
     || word;
 }
 
+// Detect when the query is about a specific topic and add anchor terms to
+// pull in chunks that may not contain the user's literal words but DO
+// contain the substantive provisions (with concrete numbers).
+const TOPIC_ANCHORS: Array<{ patterns: RegExp[]; anchors: string[] }> = [
+  {
+    patterns: [/fir(e|ing|ed)/i, /dismiss/i, /sack/i, /terminat/i, /lay\s*off/i, /redundanc/i],
+    anchors: ["notice", "weeks", "months", "days", "termination", "redundancy", "severance"],
+  },
+  {
+    patterns: [/arrest/i, /detain/i, /custody/i, /police/i],
+    anchors: ["bail", "magistrate", "hours", "charge", "lawyer"],
+  },
+  {
+    patterns: [/landlord/i, /evict/i, /tenant/i, /rent/i],
+    anchors: ["notice", "rent", "premises", "lease"],
+  },
+  {
+    patterns: [/divorce/i, /marriage/i, /spouse/i, /husband/i, /wife/i],
+    anchors: ["dissolution", "maintenance", "custody", "marriage"],
+  },
+  {
+    patterns: [/abuse/i, /violence/i, /assault/i, /attack/i],
+    anchors: ["grievous", "harm", "force", "wound", "hurt"],
+  },
+  {
+    patterns: [/child/i, /minor/i, /juvenile/i],
+    anchors: ["welfare", "guardian", "parent", "custody", "education"],
+  },
+];
+
 export async function searchDocuments(
   query: string,
   limit = 8
@@ -74,9 +112,30 @@ export async function searchDocuments(
   }
   const searchTerms = Array.from(searchSet).slice(0, 12);
 
+  // Identify the high-signal terms (specific words that should drive ranking)
+  const highSignalRaw = rawTerms.filter((t) => !LOW_SIGNAL.has(t));
+  const highSignalSet = new Set<string>();
+  for (const t of highSignalRaw) {
+    highSignalSet.add(t);
+    const s = stem(t);
+    if (s.length >= 3) highSignalSet.add(s);
+  }
+
+  // Add topic anchors so we pull substantive provisions even when the
+  // user phrases their question in informal language
+  const anchorSet = new Set<string>();
+  for (const topic of TOPIC_ANCHORS) {
+    if (topic.patterns.some((p) => p.test(query))) {
+      for (const a of topic.anchors) anchorSet.add(a);
+    }
+  }
+  // Anchors join the search pool but only count for ranking, not filtering
+  for (const a of anchorSet) searchSet.add(a);
+  const finalSearchTerms = Array.from(searchSet).slice(0, 20);
+
   // Run multiple ILIKE searches in parallel for speed
   // Search both content and section_title
-  const orConditions = searchTerms
+  const orConditions = finalSearchTerms
     .map((term) => `content.ilike.%${term}%,section_title.ilike.%${term}%`)
     .join(",");
 
@@ -84,37 +143,83 @@ export async function searchDocuments(
     .from("legal_chunks")
     .select("*")
     .or(orConditions)
-    .limit(limit * 5);
+    .limit(400);
 
   if (error || !data) return [];
 
-  // Rank results by relevance
+  // Rank results by relevance with TF-IDF-style scoring:
+  //   - Common legal vocabulary ("rights", "law") gets near-zero weight
+  //   - Specific query terms ("notice", "employer", "fires") get high weight
+  //   - Quadratic bonus for matching MULTIPLE distinct high-signal terms
+  //   - Anchor terms (topic-specific) add bonus to surface substantive provisions
+  //   - Big bonus for chunks containing actual section/article numbers
+  //     (those are the substantive legal provisions)
+  //   - Bonus for chunks containing concrete numerical values (days, weeks, months)
   const ranked = data.map((chunk) => {
     const text = `${chunk.section_title} ${chunk.content}`.toLowerCase();
     let score = 0;
 
-    for (const term of rawTerms) {
-      // Exact term match (highest weight)
-      if (text.includes(term)) score += 3;
+    // High-signal terms: each match worth a lot
+    let highSignalHits = 0;
+    for (const term of highSignalSet) {
+      if (text.includes(term)) {
+        score += 5;
+        highSignalHits += 1;
+      }
     }
 
-    for (const term of searchTerms) {
-      // Stemmed/variant match
-      if (text.includes(term)) score += 1;
+    // Quadratic bonus for matching multiple distinct high-signal terms.
+    // A chunk matching 4 high-signal terms scores 16, vs 1 term scoring 1.
+    score += highSignalHits * highSignalHits * 3;
+
+    // Anchor term hits: topic-specific words pulled in via TOPIC_ANCHORS
+    let anchorHits = 0;
+    for (const a of anchorSet) {
+      if (text.includes(a)) {
+        score += 2;
+        anchorHits += 1;
+      }
+    }
+    score += anchorHits * 2;
+
+    // Low-signal terms get a tiny weight so they break ties but don't dominate
+    for (const term of finalSearchTerms) {
+      if (LOW_SIGNAL.has(term) && text.includes(term)) score += 0.5;
     }
 
-    // Bonus for chunks with multiple different matches
-    const uniqueMatches = searchTerms.filter((t) => text.includes(t)).length;
-    score += uniqueMatches * 2;
+    // Big boost for chunks that contain explicit section/article numbers
+    if (/\b(?:Section|Article|section|article)\s*\d+/.test(chunk.content)) {
+      score += 4;
+    }
+    // Numbered heading pattern (less restrictive — works inline too):
+    // matches "82. Types of contracts" or "...code. 91. Notice on termination..."
+    if (/\b\d{1,3}[A-Za-z]?\.\s+[A-Z][a-z]/.test(chunk.content)) {
+      score += 3;
+    }
+    // Concrete numerical values (days/weeks/months/years/percent) — these are
+    // the chunks with the actual legal thresholds the user needs
+    const numericValuePattern = /\b(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+(?:day|week|month|year|hour|percent|%|dalasi|dalasis)/i;
+    if (numericValuePattern.test(chunk.content)) {
+      score += 5;
+    }
 
     // Bonus for longer, more contextual chunks
-    if (chunk.content.length > 800) score += 2;
-    else if (chunk.content.length > 400) score += 1;
+    if (chunk.content.length > 800) score += 1;
+    else if (chunk.content.length > 400) score += 0.5;
 
     return { ...chunk, score };
   });
 
-  ranked.sort((a, b) => b.score - a.score);
+  // Filter out chunks that don't match ANY high-signal term — they're noise
+  const filtered =
+    highSignalSet.size > 0
+      ? ranked.filter((c) => {
+          const text = `${c.section_title} ${c.content}`.toLowerCase();
+          return Array.from(highSignalSet).some((t) => text.includes(t));
+        })
+      : ranked;
 
-  return ranked.slice(0, limit);
+  filtered.sort((a, b) => b.score - a.score);
+
+  return filtered.slice(0, limit);
 }
