@@ -46,7 +46,7 @@ export default function Home() {
               </svg>
             </div>
             <span className="text-sm font-semibold tracking-tight">
-              <span className="bg-gradient-to-r from-accent-green via-accent-emerald to-accent-green bg-clip-text text-transparent">Gamba</span>
+              <span className="bg-gradient-to-r from-accent-green via-accent-emerald to-accent-green bg-clip-text text-transparent">Gambia</span>
               <span className="text-text-primary/90 font-light ml-1.5">Legal Aid</span>
             </span>
           </div>
@@ -141,7 +141,7 @@ export default function Home() {
       <footer className="border-t border-border py-6 px-6 mt-auto">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
           <span className="text-xs font-mono">
-            <span className="bg-gradient-to-r from-accent-green/80 to-accent-emerald/80 bg-clip-text text-transparent">Gamba</span>
+            <span className="bg-gradient-to-r from-accent-green/80 to-accent-emerald/80 bg-clip-text text-transparent">Gambia</span>
             <span className="text-text-muted ml-1">Legal Aid</span>
           </span>
           <span className="text-xs text-text-muted">Abdoulie Balisa</span>

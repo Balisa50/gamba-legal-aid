@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Gamba Legal Aid - Free Legal Assistance for Gambian Citizens",
+  title: "Gambia Legal Aid - Free Legal Assistance for Gambian Citizens",
   description:
     "AI-powered legal assistant helping Gambian citizens understand their rights. Ask questions about Gambian law in plain English.",
   keywords: [

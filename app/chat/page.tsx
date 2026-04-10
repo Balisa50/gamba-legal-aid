@@ -2,7 +2,7 @@ import Link from "next/link";
 import ChatInterface from "../components/ChatInterface";
 
 export const metadata = {
-  title: "Chat - Gamba Legal Aid",
+  title: "Chat - Gambia Legal Aid",
   description: "Ask questions about your rights under Gambian law",
 };
 
@@ -19,7 +19,7 @@ export default function ChatPage() {
               </svg>
             </div>
             <span className="text-sm font-semibold tracking-tight">
-              <span className="bg-gradient-to-r from-accent-green via-accent-emerald to-accent-green bg-clip-text text-transparent">Gamba</span>
+              <span className="bg-gradient-to-r from-accent-green via-accent-emerald to-accent-green bg-clip-text text-transparent">Gambia</span>
               <span className="text-text-primary/90 font-light ml-1.5">Legal Aid</span>
             </span>
           </div>
