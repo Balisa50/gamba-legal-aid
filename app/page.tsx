@@ -45,7 +45,10 @@ export default function Home() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
               </svg>
             </div>
-            <span className="text-sm font-semibold tracking-tight">Gamba Legal Aid</span>
+            <span className="text-sm font-semibold tracking-tight">
+              <span className="bg-gradient-to-r from-accent-green via-accent-emerald to-accent-green bg-clip-text text-transparent">Gamba</span>
+              <span className="text-text-primary/90 font-light ml-1.5">Legal Aid</span>
+            </span>
           </div>
           {/* nav right side intentionally empty */}
           <div />
@@ -137,7 +140,10 @@ export default function Home() {
       {/* Footer — minimal */}
       <footer className="border-t border-border py-6 px-6 mt-auto">
         <div className="max-w-5xl mx-auto flex items-center justify-between">
-          <span className="text-xs text-text-muted font-mono">Gamba Legal Aid</span>
+          <span className="text-xs font-mono">
+            <span className="bg-gradient-to-r from-accent-green/80 to-accent-emerald/80 bg-clip-text text-transparent">Gamba</span>
+            <span className="text-text-muted ml-1">Legal Aid</span>
+          </span>
           <span className="text-xs text-text-muted">Abdoulie Balisa</span>
         </div>
       </footer>
