@@ -27,6 +27,7 @@ export default function ChatInterface() {
   });
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [confirmWipe, setConfirmWipe] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -131,7 +132,7 @@ export default function ChatInterface() {
         </Link>
         {messages.length > 0 && (
           <button
-            onClick={() => { setMessages([]); localStorage.removeItem("gla-messages"); }}
+            onClick={() => setConfirmWipe(true)}
             className="inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-red-400 transition-colors"
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -141,6 +142,42 @@ export default function ChatInterface() {
           </button>
         )}
       </div>
+
+      {/* Confirm wipe modal */}
+      {confirmWipe && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm px-4"
+          onClick={() => setConfirmWipe(false)}
+        >
+          <div
+            className="bg-surface border border-border rounded-2xl p-6 max-w-sm w-full shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-base font-semibold text-text-primary mb-2">Wipe this chat?</h3>
+            <p className="text-sm text-text-secondary mb-5">
+              This will permanently delete the entire conversation. You cannot undo this.
+            </p>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setConfirmWipe(false)}
+                className="px-4 py-2 text-sm text-text-secondary hover:text-text-primary rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setMessages([]);
+                  localStorage.removeItem("gla-messages");
+                  setConfirmWipe(false);
+                }}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-500/90 hover:bg-red-500 rounded-lg transition-colors"
+              >
+                Wipe chat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Messages area */}
       <div className={`flex-1 min-h-0 px-4 pb-6 pt-2 space-y-6 overflow-y-auto hide-scrollbar ${messages.length === 0 ? "flex flex-col items-center justify-center" : ""}`}>
