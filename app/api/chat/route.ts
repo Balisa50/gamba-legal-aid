@@ -49,13 +49,35 @@ export async function POST(req: NextRequest) {
     // Search legal documents for relevant context — fetch more chunks for richer answers
     const relevantChunks = await searchDocuments(query, 12);
 
+    // Extract section/article numbers visible in chunk content so the model
+    // has a reliable, citable label even if section_title is just a fragment
+    function extractSectionNumbers(text: string): string {
+      const matches = new Set<string>();
+      // Match "Section 91", "Section 91(1)", "section 91", "s. 91", "Article 25", etc.
+      const re = /\b(?:Section|Article|section|article|s\.|art\.)\s*(\d+[A-Za-z]?)/g;
+      let m;
+      while ((m = re.exec(text)) !== null) {
+        matches.add(m[1]);
+      }
+      // Match standalone numbered headings like "91. Notice on termination"
+      const headingRe = /(?:^|\n)\s*(\d+[A-Za-z]?)\.\s+[A-Z]/g;
+      while ((m = headingRe.exec(text)) !== null) {
+        matches.add(m[1]);
+      }
+      const arr = Array.from(matches).slice(0, 5);
+      return arr.length > 0 ? `Sections: ${arr.join(", ")}` : "";
+    }
+
     let context = "";
     if (relevantChunks.length > 0) {
       context = relevantChunks
-        .map(
-          (chunk, i) =>
-            `[Source ${i + 1}: ${chunk.document_name} - ${chunk.section_title}]\n${chunk.content}`
-        )
+        .map((chunk, i) => {
+          const sections = extractSectionNumbers(chunk.content);
+          const label = sections
+            ? `${chunk.document_name} | ${sections}`
+            : `${chunk.document_name}`;
+          return `[Source ${i + 1}: ${label}]\n${chunk.content}`;
+        })
         .join("\n\n---\n\n");
     }
 
@@ -63,8 +85,8 @@ export async function POST(req: NextRequest) {
 
 ${
   context
-    ? `RELEVANT LEGAL DOCUMENT EXCERPTS (you MUST cite these by Act name and Section/Article number in your answer):\n\n${context}`
-    : "No specific legal documents were found for this query. Answer based on your general knowledge of Gambian law, but clearly state that you could not find the specific legal provision and recommend the user verify with a legal professional."
+    ? `LEGAL DOCUMENT EXCERPTS — these are the ONLY sources you may cite. Each source is labeled with the Act name and the Section numbers it contains. When citing a section in your answer, the section number MUST appear in one of these source labels. Quote concrete numbers and durations literally from the excerpts.\n\n${context}`
+    : "No specific legal documents were found for this query. Tell the user you do not have a provision in your database that covers this specific issue."
 }`;
 
     // Stream response
