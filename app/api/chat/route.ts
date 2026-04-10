@@ -292,17 +292,18 @@ ${
 
     // Find every quoted span in the answer and verify it appears as a
     // substring of the source context. If a quote isn't in the context,
-    // it's a fabrication.
+    // it's a fabrication. Handles both straight and curly quotes.
     function findInvalidQuotes(text: string, ctx: string): string[] {
       const ctxNorm = normalize(ctx);
       const invalid: string[] = [];
-      // Match quoted spans of 4+ words (skips inline scare-quotes on single words)
-      const re = /"([^"]{15,400})"/g;
+      // Match quoted spans of 3+ words. Accept straight (") and curly (" ")
+      // quote pairs. Min length 10 chars, max 400.
+      const re = /["\u201C]([^"\u201C\u201D]{10,400})["\u201D]/g;
       let m;
       while ((m = re.exec(text)) !== null) {
         const quote = m[1];
         const wordCount = quote.trim().split(/\s+/).length;
-        if (wordCount < 4) continue;
+        if (wordCount < 3) continue;
         const quoteNorm = normalize(quote);
         if (!ctxNorm.includes(quoteNorm)) {
           invalid.push(quote.length > 80 ? quote.slice(0, 80) + "..." : quote);
@@ -310,6 +311,9 @@ ${
       }
       return invalid;
     }
+
+    const buildId = "v6-quote-validator";
+    console.log(`[chat] build=${buildId} query="${query.slice(0, 60)}" allowlist=${validNumbers.size} chunks=${relevantChunks.length}`);
 
     let answer = await generate(systemPrompt);
 
@@ -321,6 +325,10 @@ ${
       );
       const invalidQuotes = findInvalidQuotes(answer, context);
       const invalidDurations = findInvalidDurations(answer, context);
+
+      console.log(
+        `[chat] pass1 cited=[${citedSections.join(",")}] invalidSections=[${invalidSections.join(",")}] invalidQuotes=${invalidQuotes.length} invalidDurations=${invalidDurations.length}`
+      );
 
       if (
         invalidSections.length > 0 ||
@@ -343,10 +351,18 @@ ${
             `FABRICATED DURATIONS you wrote that DO NOT APPEAR LITERALLY in the sources: ${invalidDurations.join("; ")}. These exact values are not in the legal text.`
           );
         }
+        console.log(`[chat] retry triggered: ${problems.length} problem(s)`);
         const correction = `${systemPrompt}\n\nYOUR PREVIOUS ATTEMPT CONTAINED HALLUCINATIONS:\n${problems.join(
           "\n"
-        )}\n\nRegenerate the answer. STRICT RULES:\n- Cite ONLY section numbers from the VALID SECTION NUMBERS list above.\n- Any text inside quotation marks MUST be a verbatim, character-for-character copy of text from the legal excerpts above. Do not paraphrase inside quotes. If you can't find the exact wording, do not use quotation marks.\n- Quote durations, fines, and ages ONLY if they appear LITERALLY in the legal excerpts. Do not invent tiers or simplify multi-clause provisions.\n- If a provision has subsections (a), (b), (c), reproduce them all literally. Do not collapse them.\n- If the excerpts do not contain a specific number you would need, do not write any number — explain qualitatively and stop there.\n- Do not write phrases like "consult a lawyer", "review your contract", "seek legal advice", or any disclaimer.`;
+        )}\n\nRegenerate the answer. STRICT RULES:\n- Cite ONLY section numbers from the VALID SECTION NUMBERS list above.\n- Any text inside quotation marks MUST be a verbatim, character-for-character copy of text from the legal excerpts above. Do not paraphrase inside quotes. If you can't find the exact wording, do not use quotation marks at all — explain in your own words instead.\n- Quote durations, fines, and ages ONLY if they appear LITERALLY in the legal excerpts. Do not invent tiers or simplify multi-clause provisions.\n- If a provision has subsections (a), (b), (c), reproduce them all literally. Do not collapse them.\n- If the excerpts do not contain a specific number you would need, do not write any number — explain qualitatively and stop there.\n- Do not write phrases like "consult a lawyer", "review your contract", "seek legal advice", or any disclaimer.`;
         answer = await generate(correction);
+
+        const citedAfter = findCitations(answer);
+        const invalidQuotesRetry = findInvalidQuotes(answer, context);
+        const invalidDurationsRetry = findInvalidDurations(answer, context);
+        console.log(
+          `[chat] retry result cited=[${citedAfter.join(",")}] invalidQuotes=${invalidQuotesRetry.length} invalidDurations=${invalidDurationsRetry.length}`
+        );
       }
 
       // FINAL SAFETY NET: strip anything the retry didn't fix
@@ -363,10 +379,11 @@ ${
       }
       const invalidQuotesAfter = findInvalidQuotes(answer, context);
       if (invalidQuotesAfter.length > 0) {
+        console.log(`[chat] strip pass: removing ${invalidQuotesAfter.length} fake quote(s)`);
         // Strip any remaining fabricated quotes — sentence-level removal
-        answer = answer.replace(/"([^"]{15,400})"/g, (match, q) => {
+        answer = answer.replace(/["\u201C]([^"\u201C\u201D]{10,400})["\u201D]/g, (match, q) => {
           const wc = q.trim().split(/\s+/).length;
-          if (wc < 4) return match;
+          if (wc < 3) return match;
           if (normalize(context).includes(normalize(q))) return match;
           return ""; // fabricated — drop it
         });
