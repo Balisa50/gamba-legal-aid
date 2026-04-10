@@ -8,14 +8,33 @@ interface Message {
   content: string;
 }
 
-const SUGGESTED_QUESTIONS = [
+const QUESTION_POOL = [
   "What are my rights if my landlord wants to evict me?",
   "What does Gambian labour law say about unfair dismissal?",
   "What are a child's rights under the Children's Act?",
   "What protections exist for women against domestic violence?",
   "What are my rights if I am arrested?",
   "How does the Consumer Protection Act protect me?",
+  "Can I be detained without charge in The Gambia?",
+  "What is the legal age of marriage in The Gambia?",
+  "What are my rights as a tenant under Gambian law?",
+  "What is the punishment for assault in The Gambia?",
+  "How does Gambian law protect freedom of expression?",
+  "What are an employee's rights to maternity leave?",
+  "What does the Constitution say about the right to life?",
+  "Can the police search my home without a warrant?",
+  "What are my rights if my employer fires me without notice?",
+  "How does Gambian law treat self-defence?",
+  "What protections exist against workplace discrimination?",
+  "What are the grounds for divorce in The Gambia?",
+  "What is the law on child labour in The Gambia?",
+  "What is the legal procedure for arrest in The Gambia?",
 ];
+
+function pickQuestions(count: number): string[] {
+  const shuffled = [...QUESTION_POOL].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, count);
+}
 
 export default function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>(() => {
@@ -28,6 +47,14 @@ export default function ChatInterface() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [confirmWipe, setConfirmWipe] = useState(false);
+  // Use a deterministic placeholder during SSR, then shuffle on client mount
+  // to avoid hydration mismatch between server and client renders.
+  const [suggestions, setSuggestions] = useState<string[]>(() =>
+    QUESTION_POOL.slice(0, 6)
+  );
+  useEffect(() => {
+    setSuggestions(pickQuestions(6));
+  }, []);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -206,9 +233,9 @@ export default function ChatInterface() {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-lg">
-              {SUGGESTED_QUESTIONS.map((q, i) => (
+              {suggestions.map((q) => (
                 <button
-                  key={i}
+                  key={q}
                   onClick={() => sendMessage(q)}
                   className="text-left px-4 py-3 rounded-xl bg-surface border border-border text-sm text-text-secondary hover:text-text-primary hover:border-accent-green/30 hover:bg-surface-elevated transition-all"
                 >
@@ -216,6 +243,15 @@ export default function ChatInterface() {
                 </button>
               ))}
             </div>
+            <button
+              onClick={() => setSuggestions(pickQuestions(6))}
+              className="mt-3 inline-flex items-center gap-1.5 text-xs text-text-muted hover:text-accent-green transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              Show different questions
+            </button>
           </div>
         ) : (
           messages.map((msg, i) => (
