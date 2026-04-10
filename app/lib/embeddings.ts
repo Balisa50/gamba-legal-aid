@@ -63,8 +63,13 @@ function stem(word: string): string {
 // contain the substantive provisions (with concrete numbers).
 const TOPIC_ANCHORS: Array<{ patterns: RegExp[]; anchors: string[] }> = [
   {
+    // Unfair dismissal — Sections 130, 132, 139, 140 of the Labour Act 2023
+    patterns: [/unfair/i, /wrongful/i, /tribunal/i, /reinstate/i, /complaint/i],
+    anchors: ["unfair", "tribunal", "complaint", "reinstatement", "remedies", "valid reason"],
+  },
+  {
     patterns: [/fir(e|ing|ed)/i, /dismiss/i, /sack/i, /terminat/i, /lay\s*off/i, /redundanc/i],
-    anchors: ["notice", "weeks", "months", "days", "termination", "redundancy", "severance"],
+    anchors: ["notice", "weeks", "months", "days", "termination", "redundancy", "severance", "unfair", "tribunal"],
   },
   {
     patterns: [/arrest/i, /detain/i, /custody/i, /police/i],
