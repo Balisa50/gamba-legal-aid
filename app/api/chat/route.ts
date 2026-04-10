@@ -312,7 +312,7 @@ ${
       return invalid;
     }
 
-    const buildId = "v6-quote-validator";
+    const buildId = "v7-hard-fail";
     console.log(`[chat] build=${buildId} query="${query.slice(0, 60)}" allowlist=${validNumbers.size} chunks=${relevantChunks.length}`);
 
     let answer = await generate(systemPrompt);
@@ -406,11 +406,35 @@ ${
     // Strip any banned phrases that leaked through both passes
     answer = stripBannedPhrases(answer);
 
+    // HARD FAIL: after retry + strip + banned-phrase removal, if the answer
+    // STILL has fake quotes, invalid sections, or fabricated durations, we
+    // refuse to show it. The user gets an honest "I don't know" instead of
+    // a confidently-wrong answer.
+    let validationFailed = false;
+    if (context) {
+      const finalSections = findCitations(answer);
+      const finalInvalidSections = finalSections.filter(
+        (c) => !validNumbers.has(c)
+      );
+      const finalInvalidQuotes = findInvalidQuotes(answer, context);
+      const finalInvalidDurations = findInvalidDurations(answer, context);
+      if (
+        finalInvalidSections.length > 0 ||
+        finalInvalidQuotes.length > 0 ||
+        finalInvalidDurations.length > 0
+      ) {
+        console.log(
+          `[chat] HARD FAIL: invalidSections=[${finalInvalidSections.join(",")}] invalidQuotes=${finalInvalidQuotes.length} invalidDurations=${finalInvalidDurations.length}`
+        );
+        validationFailed = true;
+      }
+    }
+
     // Final safety: if validation/stripping wiped the answer, fall back to a
     // direct, non-cited response so the user never sees an empty bubble
-    if (!answer.trim()) {
+    if (validationFailed || !answer.trim()) {
       answer =
-        "I do not have a provision in my database that directly covers this specific question. Please rephrase or ask about a related issue.";
+        "I cannot give you a verified answer to this question from the legal documents in my database. The relevant provisions may not be in the chunks I retrieved, or the question may need to be more specific. Please try rephrasing your question, or ask about a more specific aspect of the issue (for example, naming the Act you're asking about).";
     }
 
     // Stream the validated answer out word-by-word with small delays so the
@@ -433,6 +457,8 @@ ${
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
         "Cache-Control": "no-cache",
+        "X-Build": buildId,
+        "X-Validation": validationFailed ? "hard-fail" : "passed",
       },
     });
   } catch {

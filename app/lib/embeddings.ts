@@ -72,8 +72,21 @@ const TOPIC_ANCHORS: Array<{ patterns: RegExp[]; anchors: string[] }> = [
     anchors: ["notice", "weeks", "months", "days", "termination", "redundancy", "severance", "unfair", "tribunal"],
   },
   {
-    patterns: [/arrest/i, /detain/i, /custody/i, /police/i],
-    anchors: ["bail", "magistrate", "hours", "charge", "lawyer"],
+    // Arrest rights are in Constitution s.19 (right to liberty) — language uses
+    // "arrested or detained", "informed", "legal practitioner", "seventy-two hours"
+    patterns: [/arrest/i, /detain/i, /custody/i, /police/i, /handcuff/i, /interrogat/i],
+    anchors: [
+      "arrested",
+      "detained",
+      "informed",
+      "legal practitioner",
+      "seventy-two",
+      "three hours",
+      "liberty",
+      "bail",
+      "magistrate",
+      "charge",
+    ],
   },
   {
     patterns: [/landlord/i, /evict/i, /tenant/i, /rent/i],
