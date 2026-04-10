@@ -331,7 +331,7 @@ export default function ChatInterface() {
             </button>
           </div>
           <p className="text-[11px] text-text-muted text-center mt-2 font-mono">
-            Grounded in 8 Gambian Acts of Parliament
+            Grounded in 8 Gambian Acts of Parliament. Verify critical decisions against the source text.
           </p>
         </div>
       </div>
