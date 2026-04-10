@@ -68,11 +68,23 @@ export async function POST(req: NextRequest) {
       return arr.length > 0 ? `Sections ${arr.join(", ")}` : "";
     }
 
+    // Build the allowlist of section numbers per Act, aggregated across all chunks.
+    // The model will be told it can ONLY cite sections from this allowlist.
+    const allowlist = new Map<string, Set<string>>();
     let context = "";
     if (relevantChunks.length > 0) {
       context = relevantChunks
         .map((chunk, i) => {
           const sections = extractSectionNumbers(chunk.content);
+          // Pull individual section numbers (not the "Sections X, Y" prefix) for allowlist
+          const nums = sections.replace(/^Sections\s+/, "").split(",").map((s) => s.trim()).filter(Boolean);
+          if (nums.length > 0) {
+            if (!allowlist.has(chunk.document_name)) {
+              allowlist.set(chunk.document_name, new Set());
+            }
+            const set = allowlist.get(chunk.document_name)!;
+            for (const n of nums) set.add(n);
+          }
           const label = sections
             ? `${chunk.document_name} | ${sections}`
             : `${chunk.document_name}`;
@@ -81,11 +93,26 @@ export async function POST(req: NextRequest) {
         .join("\n\n---\n\n");
     }
 
+    // Render the allowlist as a prominent block the model cannot miss
+    let allowlistBlock = "";
+    if (allowlist.size > 0) {
+      const lines: string[] = [];
+      for (const [doc, set] of allowlist.entries()) {
+        const sorted = Array.from(set).sort((a, b) => {
+          const na = parseInt(a, 10);
+          const nb = parseInt(b, 10);
+          return na - nb;
+        });
+        lines.push(`  ${doc}: Section ${sorted.join(", ")}`);
+      }
+      allowlistBlock = `VALID SECTION NUMBERS — you may ONLY cite these exact numbers. Citing any other number is a critical failure:\n${lines.join("\n")}\n\n`;
+    }
+
     const systemPrompt = `${LEGAL_SYSTEM_PROMPT}
 
 ${
   context
-    ? `LEGAL DOCUMENT EXCERPTS — these are the ONLY sources you may cite. Each source is labeled with the Act name and the Section numbers it contains. When citing a section in your answer, the section number MUST appear in one of these source labels. Quote concrete numbers and durations literally from the excerpts.\n\n${context}`
+    ? `${allowlistBlock}LEGAL DOCUMENT EXCERPTS — these are the ONLY sources you may cite. Each source is labeled with the Act name and the Section numbers it contains. When citing a section in your answer, the section number MUST appear in the VALID SECTION NUMBERS list above. If a number is not in that list, do not write it. Quote concrete numbers and durations literally from the excerpts.\n\n${context}`
     : "No specific legal documents were found for this query. Tell the user you do not have a provision in your database that covers this specific issue."
 }`;
 
