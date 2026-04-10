@@ -140,7 +140,7 @@ ${
     async function generate(sysPrompt: string): Promise<string> {
       const completion = await getGroq().chat.completions.create({
         model: "llama-3.3-70b-versatile",
-        max_tokens: 2048,
+        max_tokens: 1200,
         temperature: 0.2,
         top_p: 0.9,
         stream: false,
@@ -206,9 +206,13 @@ ${
       { pattern: /\s*speak to a qualified lawyer[^.]*\./gi, replacement: "" },
       { pattern: /\s*this is general legal information[^.]*\./gi, replacement: "" },
       { pattern: /\s*this (?:information )?(?:is|does) not (?:constitute )?legal advice[^.]*\./gi, replacement: "" },
-      { pattern: /\s*it is (?:crucial|important|essential) (?:to note )?that[^.]*\./gi, replacement: "" },
-      { pattern: /\s*i want to (?:emphasize|reiterate|note)[^.]*\./gi, replacement: "" },
+      // "It is essential/crucial/important to..." in any form — pure filler
+      { pattern: /\s*it is (?:crucial|important|essential|vital|imperative)[^.]*\./gi, replacement: "" },
+      { pattern: /\s*i want to (?:emphasize|reiterate|note|stress)[^.]*\./gi, replacement: "" },
+      { pattern: /\s*it (?:is|'s) (?:worth|important) (?:noting|mentioning)[^.]*\./gi, replacement: "" },
+      { pattern: /\s*(?:please )?(?:note|be aware) that[^.]*(?:lawyer|legal advice|consult|circumstances may vary)[^.]*\./gi, replacement: "" },
       { pattern: /\s*review your employment contract[^.]*\./gi, replacement: "" },
+      { pattern: /\s*(?:additionally,?\s*)?(?:keep in mind|bear in mind)[^.]*\./gi, replacement: "" },
     ];
     function stripBannedPhrases(text: string): string {
       let out = text;
@@ -216,7 +220,21 @@ ${
         out = out.replace(pattern, replacement);
       }
       // Collapse leftover double spaces / orphan whitespace
-      return out.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+      out = out.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+
+      // If the answer ends mid-sentence (no terminal punctuation), trim back
+      // to the last complete sentence so the user never sees a half-cut reply.
+      if (!/[.!?]"?\)?$/.test(out)) {
+        const lastTerm = Math.max(
+          out.lastIndexOf("."),
+          out.lastIndexOf("!"),
+          out.lastIndexOf("?")
+        );
+        if (lastTerm > 50) {
+          out = out.slice(0, lastTerm + 1).trim();
+        }
+      }
+      return out;
     }
 
     function findInvalidDurations(text: string, ctx: string) {
