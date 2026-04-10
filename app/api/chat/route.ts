@@ -49,21 +49,35 @@ export async function POST(req: NextRequest) {
     // Search legal documents for relevant context — fetch more chunks for richer answers
     const relevantChunks = await searchDocuments(query, 12);
 
-    // Extract section/article numbers visible in chunk content so the model
-    // has a reliable, citable label even if section_title is just a fragment
+    // Extract CANONICAL section numbers only — these are the sections this
+    // chunk is actually ABOUT, not stray inline cross-references like
+    // "subject to section 41" that pollute the allowlist.
+    //
+    // We only trust:
+    //  1. A heading at the very start of the chunk: "91. Notice on termination"
+    //  2. Explicit "Section X." headings followed by a title-cased word
     function extractSectionNumbers(text: string): string {
       const matches = new Set<string>();
-      // Match "Section 91", "Section 91(1)", "section 91", "s. 91", "Article 25", etc.
-      const re = /\b(?:Section|Article|section|article|s\.|art\.)\s*(\d+[A-Za-z]?)/g;
+      const trimmed = text.trim();
+
+      // Pattern 1: chunk begins with "NN. Title" or "NN(1) Title"
+      const startRe = /^(\d{1,3}[A-Za-z]?)(?:\(\d+\))?[.\s]+[A-Z]/;
+      const startMatch = startRe.exec(trimmed);
+      if (startMatch) matches.add(startMatch[1]);
+
+      // Pattern 2: "Section NN." or "Section NN —" as a heading marker
+      const headingRe = /(?:^|\n)\s*(?:Section|SECTION|Article|ARTICLE)\s+(\d{1,3}[A-Za-z]?)\b/g;
       let m;
-      while ((m = re.exec(text)) !== null) {
-        matches.add(m[1]);
-      }
-      // Match numbered headings: "91. Notice on termination" — works inline too
-      const headingRe = /\b(\d{1,3}[A-Za-z]?)\.\s+[A-Z][a-z]/g;
       while ((m = headingRe.exec(text)) !== null) {
         matches.add(m[1]);
       }
+
+      // Pattern 3: numbered headings on their own line
+      const lineHeadingRe = /(?:^|\n)\s*(\d{1,3}[A-Za-z]?)\.\s+[A-Z][a-z]/g;
+      while ((m = lineHeadingRe.exec(text)) !== null) {
+        matches.add(m[1]);
+      }
+
       const arr = Array.from(matches).slice(0, 8);
       return arr.length > 0 ? `Sections ${arr.join(", ")}` : "";
     }
@@ -197,30 +211,55 @@ ${
     // Banned phrases that the prompt forbids but sometimes leak through.
     // Strip them post-generation as a hard guarantee.
     const BANNED_PHRASES: Array<{ pattern: RegExp; replacement: string }> = [
-      { pattern: /\s*it is recommended that you (?:also )?consult [^.]*\./gi, replacement: "" },
-      { pattern: /\s*it is (?:also )?recommended that you (?:also )?(?:review|seek|speak)[^.]*\./gi, replacement: "" },
-      { pattern: /\s*you should (?:also )?(?:consult|seek|speak to)[^.]*(?:lawyer|legal professional|advice|attorney)[^.]*\./gi, replacement: "" },
-      { pattern: /\s*(?:please |i recommend that you |i suggest you )?consult (?:a|an|with a|with an) (?:lawyer|legal professional|attorney|qualified)[^.]*\./gi, replacement: "" },
-      { pattern: /\s*for (?:the )?(?:most )?accurate(?: legal)? advice[^.]*\./gi, replacement: "" },
-      { pattern: /\s*seek (?:legal )?advice from[^.]*\./gi, replacement: "" },
-      { pattern: /\s*speak to a qualified lawyer[^.]*\./gi, replacement: "" },
+      // "You should consult / seek / speak / contact / talk to / reach out / get advice / review..."
+      { pattern: /\s*you (?:should|may want to|might want to|can|could)\s+(?:also\s+)?(?:consult|seek|speak|contact|talk|reach out|get|obtain|hire|engage|retain|see|visit|review)[^.]*\./gi, replacement: "" },
+      // "It is recommended / advisable / advised that you..."
+      { pattern: /\s*it is (?:recommended|advisable|advised|suggested|wise|prudent)[^.]*\./gi, replacement: "" },
+      // "I recommend / I suggest / I advise..."
+      { pattern: /\s*i (?:recommend|suggest|advise|would (?:recommend|suggest|advise))[^.]*\./gi, replacement: "" },
+      // "Consult a lawyer..." in any form
+      { pattern: /\s*(?:please |kindly )?consult (?:with )?(?:a|an|the)?\s*(?:qualified |licensed |professional )?(?:lawyer|legal professional|attorney|advocate|solicitor)[^.]*\./gi, replacement: "" },
+      // "Seek legal advice / professional advice / further advice..."
+      { pattern: /\s*seek (?:out )?(?:legal|professional|further|specialist|expert)\s+advice[^.]*\./gi, replacement: "" },
+      // "For accurate / legal / professional advice..."
+      { pattern: /\s*for (?:the )?(?:most )?(?:accurate|specific|tailored|personalised|personalized|professional|legal)\s+(?:legal\s+)?advice[^.]*\./gi, replacement: "" },
+      // "Speak / talk to a qualified lawyer..."
+      { pattern: /\s*(?:speak|talk) to (?:a|an) (?:qualified |licensed )?(?:lawyer|legal professional|attorney)[^.]*\./gi, replacement: "" },
+      // Disclaimers
       { pattern: /\s*this is general legal information[^.]*\./gi, replacement: "" },
       { pattern: /\s*this (?:information )?(?:is|does) not (?:constitute )?legal advice[^.]*\./gi, replacement: "" },
-      // "It is essential/crucial/important to..." in any form — pure filler
-      { pattern: /\s*it is (?:crucial|important|essential|vital|imperative)[^.]*\./gi, replacement: "" },
-      { pattern: /\s*i want to (?:emphasize|reiterate|note|stress)[^.]*\./gi, replacement: "" },
-      { pattern: /\s*it (?:is|'s) (?:worth|important) (?:noting|mentioning)[^.]*\./gi, replacement: "" },
-      { pattern: /\s*(?:please )?(?:note|be aware) that[^.]*(?:lawyer|legal advice|consult|circumstances may vary)[^.]*\./gi, replacement: "" },
+      // Filler emphasis
+      { pattern: /\s*it is (?:crucial|important|essential|vital|imperative|necessary)\s+(?:to\s+(?:note|remember|understand|emphasize|mention)\s+)?(?:that\s+)?[^.]*\./gi, replacement: "" },
+      { pattern: /\s*i want to (?:emphasize|reiterate|note|stress|highlight|point out)[^.]*\./gi, replacement: "" },
+      { pattern: /\s*it (?:is|'s) (?:worth|important)\s+(?:noting|mentioning|remembering)[^.]*\./gi, replacement: "" },
+      { pattern: /\s*(?:please )?(?:note|be aware)\s+that[^.]*(?:lawyer|legal advice|consult|circumstances may vary)[^.]*\./gi, replacement: "" },
       { pattern: /\s*review your employment contract[^.]*\./gi, replacement: "" },
-      { pattern: /\s*(?:additionally,?\s*)?(?:keep in mind|bear in mind)[^.]*\./gi, replacement: "" },
+      { pattern: /\s*(?:additionally,?\s*)?(?:keep|bear) in mind[^.]*\./gi, replacement: "" },
+      // Catch any remaining "consult... lawyer/advice/professional" sentence
+      { pattern: /\s*[^.]*consult[^.]*(?:lawyer|legal advice|legal professional|attorney|advocate|solicitor)[^.]*\./gi, replacement: "" },
     ];
     function stripBannedPhrases(text: string): string {
       let out = text;
       for (const { pattern, replacement } of BANNED_PHRASES) {
         out = out.replace(pattern, replacement);
       }
+
+      // Clean up orphan sentence starters left behind by mid-sentence strips,
+      // e.g. "You should If you believe..." → "If you believe..."
+      out = out.replace(
+        /\b(?:You should|You may|You can|It is|Additionally,|Furthermore,|Moreover,)\s+(?=[A-Z][a-z])/g,
+        ""
+      );
+
       // Collapse leftover double spaces / orphan whitespace
       out = out.replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+
+      // Drop empty paragraphs and lone-fragment lines
+      out = out
+        .split(/\n\n+/)
+        .map((p) => p.trim())
+        .filter((p) => p.length > 20)
+        .join("\n\n");
 
       // If the answer ends mid-sentence (no terminal punctuation), trim back
       // to the last complete sentence so the user never sees a half-cut reply.
