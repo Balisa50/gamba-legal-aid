@@ -413,10 +413,18 @@ ${
         "I do not have a provision in my database that directly covers this specific question. Please rephrase or ask about a related issue.";
     }
 
+    // Stream the validated answer out word-by-word with small delays so the
+    // user sees it being written rather than pasted in all at once.
     const encoder = new TextEncoder();
     const readable = new ReadableStream({
-      start(controller) {
-        controller.enqueue(encoder.encode(answer));
+      async start(controller) {
+        // Split on whitespace but keep the spaces so the output reads naturally
+        const tokens = answer.match(/\S+\s*/g) || [answer];
+        for (const token of tokens) {
+          controller.enqueue(encoder.encode(token));
+          // ~25ms per word feels like real typing without dragging the UX
+          await new Promise((r) => setTimeout(r, 25));
+        }
         controller.close();
       },
     });
