@@ -278,21 +278,64 @@ ${
       return invalid;
     }
 
+    // Normalize text for fuzzy substring comparison: lowercase, collapse
+    // whitespace, replace curly quotes/apostrophes/dashes with ASCII versions.
+    function normalize(s: string): string {
+      return s
+        .toLowerCase()
+        .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+        .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+        .replace(/[\u2013\u2014\u2012]/g, "-")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    // Find every quoted span in the answer and verify it appears as a
+    // substring of the source context. If a quote isn't in the context,
+    // it's a fabrication.
+    function findInvalidQuotes(text: string, ctx: string): string[] {
+      const ctxNorm = normalize(ctx);
+      const invalid: string[] = [];
+      // Match quoted spans of 4+ words (skips inline scare-quotes on single words)
+      const re = /"([^"]{15,400})"/g;
+      let m;
+      while ((m = re.exec(text)) !== null) {
+        const quote = m[1];
+        const wordCount = quote.trim().split(/\s+/).length;
+        if (wordCount < 4) continue;
+        const quoteNorm = normalize(quote);
+        if (!ctxNorm.includes(quoteNorm)) {
+          invalid.push(quote.length > 80 ? quote.slice(0, 80) + "..." : quote);
+        }
+      }
+      return invalid;
+    }
+
     let answer = await generate(systemPrompt);
 
-    // VALIDATION PASS 1: section numbers and durations against the source context
+    // VALIDATION PASS 1: sections, quotes, and durations against the source context
     if (context) {
       const citedSections = findCitations(answer);
       const invalidSections = Array.from(
         new Set(citedSections.filter((c) => !validNumbers.has(c)))
       );
+      const invalidQuotes = findInvalidQuotes(answer, context);
       const invalidDurations = findInvalidDurations(answer, context);
 
-      if (invalidSections.length > 0 || invalidDurations.length > 0) {
+      if (
+        invalidSections.length > 0 ||
+        invalidQuotes.length > 0 ||
+        invalidDurations.length > 0
+      ) {
         const problems: string[] = [];
         if (invalidSections.length > 0) {
           problems.push(
             `INVALID SECTION NUMBERS you cited that DO NOT EXIST in the sources: ${invalidSections.join(", ")}.`
+          );
+        }
+        if (invalidQuotes.length > 0) {
+          problems.push(
+            `FABRICATED QUOTES — these quoted phrases do NOT appear in the legal excerpts: ${invalidQuotes.map((q) => `"${q}"`).join("; ")}. You may only put text in quotation marks if it appears LITERALLY in the excerpts above.`
           );
         }
         if (invalidDurations.length > 0) {
@@ -302,7 +345,7 @@ ${
         }
         const correction = `${systemPrompt}\n\nYOUR PREVIOUS ATTEMPT CONTAINED HALLUCINATIONS:\n${problems.join(
           "\n"
-        )}\n\nRegenerate the answer. STRICT RULES:\n- Cite ONLY section numbers from the VALID SECTION NUMBERS list above.\n- Quote durations, fines, and ages ONLY if they appear LITERALLY in the legal excerpts. Do not paraphrase numbers. Do not invent tiers.\n- If the excerpts do not contain a specific number you would need, do not write any number — explain qualitatively that the law sets a notice period that varies by length of service, and stop there.\n- Do not write phrases like "consult a lawyer", "review your contract", "seek legal advice", or any disclaimer.`;
+        )}\n\nRegenerate the answer. STRICT RULES:\n- Cite ONLY section numbers from the VALID SECTION NUMBERS list above.\n- Any text inside quotation marks MUST be a verbatim, character-for-character copy of text from the legal excerpts above. Do not paraphrase inside quotes. If you can't find the exact wording, do not use quotation marks.\n- Quote durations, fines, and ages ONLY if they appear LITERALLY in the legal excerpts. Do not invent tiers or simplify multi-clause provisions.\n- If a provision has subsections (a), (b), (c), reproduce them all literally. Do not collapse them.\n- If the excerpts do not contain a specific number you would need, do not write any number — explain qualitatively and stop there.\n- Do not write phrases like "consult a lawyer", "review your contract", "seek legal advice", or any disclaimer.`;
         answer = await generate(correction);
       }
 
@@ -317,6 +360,21 @@ ${
           "gi"
         );
         answer = answer.replace(stripRe, "the relevant provision");
+      }
+      const invalidQuotesAfter = findInvalidQuotes(answer, context);
+      if (invalidQuotesAfter.length > 0) {
+        // Strip any remaining fabricated quotes — sentence-level removal
+        answer = answer.replace(/"([^"]{15,400})"/g, (match, q) => {
+          const wc = q.trim().split(/\s+/).length;
+          if (wc < 4) return match;
+          if (normalize(context).includes(normalize(q))) return match;
+          return ""; // fabricated — drop it
+        });
+        // Drop any sentence that became empty after quote removal
+        answer = answer
+          .split(/(?<=[.!?])\s+/)
+          .filter((s) => s.replace(/\s+/g, " ").trim().length > 15)
+          .join(" ");
       }
       const invalidDurAfter = findInvalidDurations(answer, context);
       for (const dur of invalidDurAfter) {
