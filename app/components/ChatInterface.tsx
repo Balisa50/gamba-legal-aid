@@ -75,6 +75,19 @@ export default function ChatInterface() {
           ]);
           return;
         }
+        if (res.status === 400) {
+          // Try to surface the server's specific message (e.g. injection blocked)
+          let msg = "I can only answer legal questions about Gambian law. Please rephrase your question.";
+          try {
+            const data = await res.json();
+            if (data?.error) msg = data.error;
+          } catch { /* ignore */ }
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: msg },
+          ]);
+          return;
+        }
         throw new Error("Request failed");
       }
 
