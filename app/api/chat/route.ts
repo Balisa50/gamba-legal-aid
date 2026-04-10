@@ -49,36 +49,25 @@ export async function POST(req: NextRequest) {
     // Search legal documents for relevant context — fetch more chunks for richer answers
     const relevantChunks = await searchDocuments(query, 12);
 
-    // Extract CANONICAL section numbers only — these are the sections this
-    // chunk is actually ABOUT, not stray inline cross-references like
-    // "subject to section 41" that pollute the allowlist.
+    // Extract CANONICAL section numbers from a chunk.
     //
-    // We only trust:
-    //  1. A heading at the very start of the chunk: "91. Notice on termination"
-    //  2. Explicit "Section X." headings followed by a title-cased word
+    // The chunks are PDF text with headings embedded inline like
+    // "91. Notice on termination of contracts" — these are canonical.
+    // Cross-references appear as "section 91" or "sections 128 to 134" —
+    // those do NOT match the "NUMBER. Title" pattern.
+    //
+    // Rule: a number is canonical if it appears as `NUMBER. Title-Case-Word`
+    // AND is not preceded by the word "section" or "sections".
     function extractSectionNumbers(text: string): string {
       const matches = new Set<string>();
-      const trimmed = text.trim();
-
-      // Pattern 1: chunk begins with "NN. Title" or "NN(1) Title"
-      const startRe = /^(\d{1,3}[A-Za-z]?)(?:\(\d+\))?[.\s]+[A-Z]/;
-      const startMatch = startRe.exec(trimmed);
-      if (startMatch) matches.add(startMatch[1]);
-
-      // Pattern 2: "Section NN." or "Section NN —" as a heading marker
-      const headingRe = /(?:^|\n)\s*(?:Section|SECTION|Article|ARTICLE)\s+(\d{1,3}[A-Za-z]?)\b/g;
+      const headingRe = /\b(\d{1,3}[A-Za-z]?)\.\s+[A-Z][a-zA-Z]+/g;
       let m;
       while ((m = headingRe.exec(text)) !== null) {
+        const lookback = text.slice(Math.max(0, m.index - 12), m.index).toLowerCase();
+        if (/sections?\s+$/.test(lookback)) continue;
         matches.add(m[1]);
       }
-
-      // Pattern 3: numbered headings on their own line
-      const lineHeadingRe = /(?:^|\n)\s*(\d{1,3}[A-Za-z]?)\.\s+[A-Z][a-z]/g;
-      while ((m = lineHeadingRe.exec(text)) !== null) {
-        matches.add(m[1]);
-      }
-
-      const arr = Array.from(matches).slice(0, 8);
+      const arr = Array.from(matches).slice(0, 12);
       return arr.length > 0 ? `Sections ${arr.join(", ")}` : "";
     }
 
