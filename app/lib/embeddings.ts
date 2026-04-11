@@ -231,26 +231,40 @@ export async function searchDocuments(
     queryTerms = finalSearchTerms;
   }
 
-  // Run multiple ILIKE searches in parallel for speed.
-  // Search both content and section_title.
+  // Run multiple POSIX-regex searches via the imatch operator. Using
+  // word boundaries [[:<:]]term[[:>:]] instead of ILIKE %term% is the
+  // critical fix: substring ILIKE on common words like "rent" also
+  // matches "parent", "current", "different", "agreement" across every
+  // Act in the database, drowning Rent Act chunks in noise. Word
+  // boundaries return only chunks where the whole word appears.
   //
-  // CRITICAL: PostgREST's .or() parser uses commas as separators and
-  // does NOT accept spaces or commas inside ILIKE patterns. Multi-word
-  // anchors (e.g. "prohibited immigrant") break the entire query and
-  // cause Supabase to return an error, which we previously swallowed
-  // silently with `return []`. Filter out any term containing characters
-  // that would corrupt the OR clause.
+  // Filter terms to plain alphanumeric — PostgREST's .or() parser does
+  // not tolerate spaces or commas inside filter values.
   const safeTerms = queryTerms.filter((t) => /^[a-z0-9]+$/i.test(t));
 
+  // Only require start-of-word boundary so morphological variants still
+  // match: "evict" catches "evicted", "evicts", "eviction"; "rent"
+  // catches "rent", "rents", "rental", "rented"; but NOT "current",
+  // "parent", "different", "apparent" (they lack a word break before
+  // the term).
   const orConditions = safeTerms
-    .map((term) => `content.ilike.%${term}%,section_title.ilike.%${term}%`)
+    .map(
+      (term) =>
+        `content.imatch.[[:<:]]${term},section_title.imatch.[[:<:]]${term}`
+    )
     .join(",");
 
+  // 2000 row limit: common anchor terms like "notice", "months",
+  // "shall" appear in hundreds of chunks across every Act. The
+  // rare, topic-specific chunks (e.g. Rent Act 2014) must be in
+  // the candidate pool before the client-side ranker can surface
+  // them — otherwise they're truncated off the end. 2000 is cheap
+  // (~1.5 MB over the wire) and covers the entire 1876-chunk corpus.
   const { data, error } = await supabase
     .from("legal_chunks")
     .select("*")
     .or(orConditions)
-    .limit(400);
+    .limit(2000);
 
   if (error) {
     console.error(`[searchDocuments] supabase error:`, error.message, "terms:", safeTerms);
