@@ -10,15 +10,19 @@ interface Message {
 
 const QUESTION_POOL = [
   "What are my rights if my landlord wants to evict me?",
+  "How much notice must a landlord give before increasing rent?",
   "What does Gambian labour law say about unfair dismissal?",
   "What are a child's rights under the Children's Act?",
-  "What protections exist for women against domestic violence?",
+  "How do I get a protection order against a violent partner?",
+  "What does the Domestic Violence Act define as abuse?",
   "What are my rights if I am arrested?",
   "How does the Consumer Protection Act protect me?",
   "Can I be detained without charge in The Gambia?",
   "What is the legal age of marriage in The Gambia?",
-  "What are my rights as a tenant under Gambian law?",
+  "What are my rights as a tenant under the Rent Act?",
   "What is the punishment for assault in The Gambia?",
+  "Who is a prohibited immigrant under the Immigration Act?",
+  "What does Gambian law say about deportation?",
   "How does Gambian law protect freedom of expression?",
   "What are an employee's rights to maternity leave?",
   "What does the Constitution say about the right to life?",
@@ -26,9 +30,9 @@ const QUESTION_POOL = [
   "What are my rights if my employer fires me without notice?",
   "How does Gambian law treat self-defence?",
   "What protections exist against workplace discrimination?",
-  "What are the grounds for divorce in The Gambia?",
   "What is the law on child labour in The Gambia?",
   "What is the legal procedure for arrest in The Gambia?",
+  "What remedies exist for a tenant whose landlord refuses to make repairs?",
 ];
 
 function pickQuestions(count: number): string[] {
@@ -367,7 +371,7 @@ export default function ChatInterface() {
             </button>
           </div>
           <p className="text-[11px] text-text-muted text-center mt-2 font-mono">
-            Grounded in 8 Gambian Acts of Parliament. Verify critical decisions against the source text.
+            Grounded in 13 Gambian Acts of Parliament. Verify critical decisions against the source text.
           </p>
         </div>
       </div>

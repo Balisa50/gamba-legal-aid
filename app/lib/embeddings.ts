@@ -89,16 +89,79 @@ const TOPIC_ANCHORS: Array<{ patterns: RegExp[]; anchors: string[] }> = [
     ],
   },
   {
-    patterns: [/landlord/i, /evict/i, /tenant/i, /rent/i],
-    anchors: ["notice", "rent", "premises", "lease"],
+    // Rent Act 2014 + Amendments 2017/2024 — eviction, notice, tribunal
+    patterns: [/landlord/i, /evict/i, /tenant/i, /rent/i, /lease/i, /premises/i],
+    anchors: [
+      "notice",
+      "rent",
+      "premises",
+      "lease",
+      "tenant",
+      "landlord",
+      "tribunal",
+      "recovery",
+      "possession",
+      "quit",
+      "months",
+      "dalasi",
+    ],
   },
   {
     patterns: [/divorce/i, /marriage/i, /spouse/i, /husband/i, /wife/i],
     anchors: ["dissolution", "maintenance", "custody", "marriage"],
   },
   {
-    patterns: [/abuse/i, /violence/i, /assault/i, /attack/i],
-    anchors: ["grievous", "harm", "force", "wound", "hurt"],
+    // Domestic Violence Act 2013 — protection orders, shelters, police duty
+    patterns: [/domestic/i, /abuse/i, /violence/i, /batter/i, /beat/i],
+    anchors: [
+      "protection order",
+      "protection",
+      "complainant",
+      "respondent",
+      "shelter",
+      "police officer",
+      "emotional",
+      "economic abuse",
+      "intimidation",
+      "harassment",
+      "household",
+      "relationship",
+    ],
+  },
+  {
+    patterns: [/assault/i, /attack/i, /injur/i, /wound/i, /hurt/i],
+    anchors: ["grievous", "harm", "force", "wound", "hurt", "bodily"],
+  },
+  {
+    // Immigration Act — visas, residence, deportation, border
+    patterns: [/immigrat/i, /visa/i, /passport/i, /deport/i, /citizen/i, /border/i, /foreigner/i, /refugee/i, /asylum/i],
+    anchors: [
+      "entry",
+      "permit",
+      "residence",
+      "prohibited immigrant",
+      "deportation",
+      "passport",
+      "immigration officer",
+      "visa",
+      "port of entry",
+      "removal",
+      "citizen",
+    ],
+  },
+  {
+    // Women's rights — fall back on Constitution + Domestic Violence Act
+    patterns: [/woman/i, /women/i, /gender/i, /sex(ual)? harassment/i, /rape/i],
+    anchors: [
+      "equality",
+      "discrimination",
+      "woman",
+      "women",
+      "protection",
+      "sexual",
+      "consent",
+      "maternity",
+    ],
   },
   {
     patterns: [/child/i, /minor/i, /juvenile/i],
