@@ -231,9 +231,18 @@ export async function searchDocuments(
     queryTerms = finalSearchTerms;
   }
 
-  // Run multiple ILIKE searches in parallel for speed
-  // Search both content and section_title
-  const orConditions = queryTerms
+  // Run multiple ILIKE searches in parallel for speed.
+  // Search both content and section_title.
+  //
+  // CRITICAL: PostgREST's .or() parser uses commas as separators and
+  // does NOT accept spaces or commas inside ILIKE patterns. Multi-word
+  // anchors (e.g. "prohibited immigrant") break the entire query and
+  // cause Supabase to return an error, which we previously swallowed
+  // silently with `return []`. Filter out any term containing characters
+  // that would corrupt the OR clause.
+  const safeTerms = queryTerms.filter((t) => /^[a-z0-9]+$/i.test(t));
+
+  const orConditions = safeTerms
     .map((term) => `content.ilike.%${term}%,section_title.ilike.%${term}%`)
     .join(",");
 
@@ -243,7 +252,11 @@ export async function searchDocuments(
     .or(orConditions)
     .limit(400);
 
-  if (error || !data) return [];
+  if (error) {
+    console.error(`[searchDocuments] supabase error:`, error.message, "terms:", safeTerms);
+    return [];
+  }
+  if (!data) return [];
 
   // Rank results by relevance with TF-IDF-style scoring:
   //   - Common legal vocabulary ("rights", "law") gets near-zero weight
