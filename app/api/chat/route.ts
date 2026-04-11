@@ -47,7 +47,15 @@ export async function POST(req: NextRequest) {
     }
 
     // Search legal documents for relevant context — fetch more chunks for richer answers
-    const relevantChunks = await searchDocuments(query, 12);
+    let searchError: string | undefined;
+    let relevantChunks = [] as Awaited<ReturnType<typeof searchDocuments>>;
+    try {
+      relevantChunks = await searchDocuments(query, 12);
+    } catch (e) {
+      searchError = e instanceof Error ? e.message : String(e);
+    }
+    const lastErr = (globalThis as { __lastSearchError?: string }).__lastSearchError;
+    if (lastErr && !searchError) searchError = lastErr;
 
     // Extract CANONICAL section numbers from a chunk.
     //
@@ -312,7 +320,7 @@ ${
       return invalid;
     }
 
-    const buildId = "v9-anchor-filter";
+    const buildId = "v10-surface-error";
     console.log(`[chat] build=${buildId} query="${query.slice(0, 60)}" allowlist=${validNumbers.size} chunks=${relevantChunks.length}`);
 
     // DIAG: how many quotes does the regex extract from any text?
@@ -482,6 +490,7 @@ ${
         "X-Allowlist-Size": String(validNumbers.size),
         "X-Chunks": String(relevantChunks.length),
         "X-Context-Len": String(context.length),
+        "X-Search-Error": (searchError || "none").slice(0, 200),
       },
     });
   } catch {

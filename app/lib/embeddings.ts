@@ -254,9 +254,18 @@ export async function searchDocuments(
 
   if (error) {
     console.error(`[searchDocuments] supabase error:`, error.message, "terms:", safeTerms);
+    // Surface the error so the caller can put it in the response headers.
+    // We mutate a global so we don't have to change the function signature.
+    (globalThis as { __lastSearchError?: string }).__lastSearchError =
+      `${error.message} | terms=${safeTerms.join(",")}`;
     return [];
   }
-  if (!data) return [];
+  if (!data) {
+    (globalThis as { __lastSearchError?: string }).__lastSearchError =
+      `null data | terms=${safeTerms.join(",")}`;
+    return [];
+  }
+  (globalThis as { __lastSearchError?: string }).__lastSearchError = undefined;
 
   // Rank results by relevance with TF-IDF-style scoring:
   //   - Common legal vocabulary ("rights", "law") gets near-zero weight
