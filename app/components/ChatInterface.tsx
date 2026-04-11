@@ -338,7 +338,7 @@ export default function ChatInterface() {
       {/* Input area */}
       <div className="border-t border-border bg-surface/50 backdrop-blur-sm px-4 py-4">
         <div className="max-w-3xl mx-auto">
-          <div className="flex items-end gap-3 bg-surface border border-border rounded-2xl px-4 py-3 focus-within:border-accent-green/30 transition-colors">
+          <div className="flex items-end gap-3 bg-surface border border-border rounded-full px-5 py-3 focus-within:border-accent-green/30 transition-colors">
             <textarea
               ref={inputRef}
               value={input}
