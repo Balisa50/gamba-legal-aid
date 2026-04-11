@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
     const lastErr = (globalThis as { __lastSearchError?: string }).__lastSearchError;
     if (lastErr && !searchError) searchError = lastErr;
 
-    // Extract CANONICAL section numbers from a chunk.
+    // Extract CANONICAL section numbers AND their titles from a chunk.
     //
     // The chunks are PDF text with headings embedded inline like
     // "91. Notice on termination of contracts" — these are canonical.
@@ -66,57 +66,147 @@ export async function POST(req: NextRequest) {
     //
     // Rule: a number is canonical if it appears as `NUMBER. Title-Case-Word`
     // AND is not preceded by the word "section" or "sections".
-    function extractSectionNumbers(text: string): string {
-      const matches = new Set<string>();
-      const headingRe = /\b(\d{1,3}[A-Za-z]?)\.\s+[A-Z][a-zA-Z]+/g;
+    //
+    // Returns an array of { num, title } pairs. The title is captured from
+    // the first 80 chars following the number, trimmed at the next sentence
+    // boundary or subsection marker. These titles are shown to the model so
+    // it stops swapping adjacent section numbers.
+    function extractSectionHeadings(
+      text: string
+    ): Array<{ num: string; title: string }> {
+      const out: Array<{ num: string; title: string }> = [];
+      const seen = new Set<string>();
+      const headingRe = /\b(\d{1,3}[A-Za-z]?)\.\s+([A-Z][a-zA-Z][^\n]{1,120})/g;
       let m;
       while ((m = headingRe.exec(text)) !== null) {
-        const lookback = text.slice(Math.max(0, m.index - 12), m.index).toLowerCase();
+        const lookback = text
+          .slice(Math.max(0, m.index - 12), m.index)
+          .toLowerCase();
         if (/sections?\s+$/.test(lookback)) continue;
-        matches.add(m[1]);
+        const num = m[1];
+        if (seen.has(num)) continue;
+        // Title ends at the first (1) subsection marker, period, or next number heading
+        let title = m[2];
+        title = title.split(/\s*\(\s*\d+\s*\)/)[0];
+        title = title.split(/(?<=\w)\.\s+[A-Z]/)[0];
+        title = title.split(/\s+\d{1,3}\.\s+[A-Z]/)[0];
+        // Trim trailing TOC number pollution: "Implied covenants 14" → "Implied covenants"
+        title = title.replace(/\s+\d{1,3}[A-Za-z]?\s*$/, "");
+        title = title.trim().slice(0, 80);
+        // Drop trailing partial words
+        if (title.length === 80) {
+          const lastSpace = title.lastIndexOf(" ");
+          if (lastSpace > 40) title = title.slice(0, lastSpace);
+        }
+        seen.add(num);
+        out.push({ num, title });
       }
-      const arr = Array.from(matches).slice(0, 12);
-      return arr.length > 0 ? `Sections ${arr.join(", ")}` : "";
+      return out.slice(0, 15);
     }
 
-    // Build the allowlist of section numbers per Act, aggregated across all chunks.
-    // The model will be told it can ONLY cite sections from this allowlist.
-    const allowlist = new Map<string, Set<string>>();
+    // Slice a chunk into { num, title, body } pieces by finding every
+    // canonical "NUMBER. Title" heading and taking everything between
+    // successive headings as that section's body. This is how we get
+    // DISTINCT content for Section 14 vs Section 15 even when they live
+    // in the same chunk.
+    interface SectionSlice {
+      num: string;
+      title: string;
+      body: string;
+      start: number;
+    }
+    function sliceChunkByHeadings(chunk: string): SectionSlice[] {
+      const headingRe = /\b(\d{1,3}[A-Za-z]?)\.\s+([A-Z][a-zA-Z][^\n]{1,120})/g;
+      const slices: SectionSlice[] = [];
+      let m;
+      while ((m = headingRe.exec(chunk)) !== null) {
+        const lookback = chunk
+          .slice(Math.max(0, m.index - 12), m.index)
+          .toLowerCase();
+        if (/sections?\s+$/.test(lookback)) continue;
+        let title = m[2];
+        title = title.split(/\s*\(\s*\d+\s*\)/)[0];
+        title = title.split(/(?<=\w)\.\s+[A-Z]/)[0];
+        title = title.split(/\s+\d{1,3}\.\s+[A-Z]/)[0];
+        title = title.replace(/\s+\d{1,3}[A-Za-z]?\s*$/, "");
+        title = title.trim().slice(0, 80);
+        slices.push({ num: m[1], title, body: "", start: m.index });
+      }
+      // Assign body = text between this heading and the next heading
+      for (let i = 0; i < slices.length; i++) {
+        const from = slices[i].start;
+        const to = i + 1 < slices.length ? slices[i + 1].start : chunk.length;
+        slices[i].body = chunk.slice(from, to);
+      }
+      // Drop TOC-style slices whose body is < 40 chars (just heading + next heading)
+      return slices.filter((s) => s.body.length >= 40);
+    }
+
+    // Build the allowlist: for each Act, a map of section number → title.
+    // Also build sectionContent: section number → the actual prose of
+    // that section (sliced from the chunks, not the whole chunk) so that
+    // grounding can distinguish adjacent sections.
+    const allowlist = new Map<string, Map<string, string>>();
+    const sectionContent = new Map<string, Map<string, string>>();
     let context = "";
     if (relevantChunks.length > 0) {
       context = relevantChunks
         .map((chunk, i) => {
-          const sections = extractSectionNumbers(chunk.content);
-          // Pull individual section numbers (not the "Sections X, Y" prefix) for allowlist
-          const nums = sections.replace(/^Sections\s+/, "").split(",").map((s) => s.trim()).filter(Boolean);
-          if (nums.length > 0) {
+          const slices = sliceChunkByHeadings(chunk.content);
+          if (slices.length > 0) {
             if (!allowlist.has(chunk.document_name)) {
-              allowlist.set(chunk.document_name, new Set());
+              allowlist.set(chunk.document_name, new Map());
             }
-            const set = allowlist.get(chunk.document_name)!;
-            for (const n of nums) set.add(n);
+            if (!sectionContent.has(chunk.document_name)) {
+              sectionContent.set(chunk.document_name, new Map());
+            }
+            const titleMap = allowlist.get(chunk.document_name)!;
+            const contentMap = sectionContent.get(chunk.document_name)!;
+            for (const sl of slices) {
+              // Prefer the LONGEST body seen for this number — TOC slices
+              // are tiny, real prose is longer. Title follows whichever
+              // body wins.
+              const priorBody = contentMap.get(sl.num) || "";
+              if (sl.body.length > priorBody.length) {
+                contentMap.set(sl.num, sl.body);
+                titleMap.set(sl.num, sl.title);
+              }
+            }
           }
-          const label = sections
-            ? `${chunk.document_name} | ${sections}`
+          const headings = extractSectionHeadings(chunk.content);
+          const sectionLabel =
+            headings.length > 0
+              ? `Sections ${headings.map((h) => h.num).join(", ")}`
+              : "";
+          const label = sectionLabel
+            ? `${chunk.document_name} | ${sectionLabel}`
             : `${chunk.document_name}`;
           return `[Source ${i + 1}: ${label}]\n${chunk.content}`;
         })
         .join("\n\n---\n\n");
     }
 
-    // Render the allowlist as a prominent block the model cannot miss
+    // Render the allowlist with TITLES so the model can pick the right number.
+    // Example: "  Rent Act 2014: 13 Implied covenants; 14 Notice of termination; 15 Powers of tribunal"
+    // Seeing the titles side-by-side is the main mechanism that stops the
+    // model from swapping adjacent section numbers.
     let allowlistBlock = "";
     if (allowlist.size > 0) {
       const lines: string[] = [];
-      for (const [doc, set] of allowlist.entries()) {
-        const sorted = Array.from(set).sort((a, b) => {
-          const na = parseInt(a, 10);
-          const nb = parseInt(b, 10);
+      for (const [doc, titleMap] of allowlist.entries()) {
+        const sorted = Array.from(titleMap.entries()).sort((a, b) => {
+          const na = parseInt(a[0], 10);
+          const nb = parseInt(b[0], 10);
           return na - nb;
         });
-        lines.push(`  ${doc}: Section ${sorted.join(", ")}`);
+        const formatted = sorted
+          .map(([n, t]) => `s.${n} ${t}`)
+          .join("; ");
+        lines.push(`  ${doc}: ${formatted}`);
       }
-      allowlistBlock = `VALID SECTION NUMBERS — you may ONLY cite these exact numbers. Citing any other number is a critical failure:\n${lines.join("\n")}\n\n`;
+      allowlistBlock = `VALID SECTIONS with their titles — you may ONLY cite these numbers, and the claim attached to each cited number MUST match the section's title. Citing s.15 (Powers of tribunal) for a claim about notice periods is wrong — use s.14 (Notice of termination) instead. Read the titles carefully:\n${lines.join(
+        "\n"
+      )}\n\n`;
     }
 
     const systemPrompt = `${LEGAL_SYSTEM_PROMPT}
@@ -130,8 +220,18 @@ ${
     // Build flat set of all valid section numbers across every Act in context.
     // The model's output will be validated against this set after generation.
     const validNumbers = new Set<string>();
-    for (const set of allowlist.values()) {
-      for (const n of set) validNumbers.add(n);
+    for (const titleMap of allowlist.values()) {
+      for (const n of titleMap.keys()) validNumbers.add(n);
+    }
+
+    // Flatten sectionContent: number → concatenated text. Used by the
+    // grounding validator below.
+    const flatSectionContent = new Map<string, string>();
+    for (const contentMap of sectionContent.values()) {
+      for (const [num, text] of contentMap.entries()) {
+        const prior = flatSectionContent.get(num) || "";
+        flatSectionContent.set(num, prior + " " + text);
+      }
     }
 
     const conversationMessages = messages
@@ -170,6 +270,84 @@ ${
       let m;
       while ((m = re.exec(text)) !== null) found.push(m[1]);
       return found;
+    }
+
+    // Find each citation AND the sentence it appears in so we can check
+    // whether the content of that sentence matches the cited section's
+    // actual text.
+    function findCitationsWithContext(
+      text: string
+    ): Array<{ num: string; sentence: string }> {
+      const out: Array<{ num: string; sentence: string }> = [];
+      // Split on sentence boundaries — ., !, ? followed by space or newline
+      const sentences = text.split(/(?<=[.!?])\s+(?=[A-Z0-9])/);
+      const re = /\b(?:Section|Article|s\.|art\.)\s*(\d+[A-Za-z]?)/gi;
+      for (const sentence of sentences) {
+        let m;
+        re.lastIndex = 0;
+        while ((m = re.exec(sentence)) !== null) {
+          out.push({ num: m[1], sentence });
+        }
+      }
+      return out;
+    }
+
+    // Stop words to strip from sentence content words before grounding check
+    const GROUNDING_STOP = new Set([
+      "the", "a", "an", "of", "to", "in", "on", "at", "by", "for", "with",
+      "from", "into", "under", "over", "upon", "and", "or", "but", "is",
+      "are", "was", "were", "be", "been", "being", "have", "has", "had",
+      "shall", "may", "must", "can", "could", "should", "will", "would",
+      "this", "that", "these", "those", "it", "its", "as", "if", "so",
+      "not", "no", "any", "all", "such", "any", "some", "one", "two",
+      "act", "section", "article", "states", "provides", "stated",
+      "provision", "provisions", "law", "legal", "court", "person", "you",
+      "your", "their", "his", "her", "he", "she", "they", "who", "which",
+      "where", "when", "what", "than", "then", "other", "more", "also",
+      "including", "include", "such", "out", "about", "according", "upon",
+    ]);
+
+    // Grounding check: for each citation, verify that at least 2 content
+    // words from the surrounding sentence actually appear in the cited
+    // section's chunk text. This catches "Section 15 says you have one
+    // month notice" when Section 15 is actually about tribunal powers and
+    // Section 14 is the one about notice.
+    //
+    // Returns the list of citations whose grounding failed. Each failure
+    // is { num, sentence } so we can show the model exactly what to fix.
+    function findUngroundedCitations(
+      text: string
+    ): Array<{ num: string; sentence: string }> {
+      const failures: Array<{ num: string; sentence: string }> = [];
+      const cites = findCitationsWithContext(text);
+      for (const { num, sentence } of cites) {
+        const sectionText = flatSectionContent.get(num);
+        if (!sectionText) continue; // number not in our corpus — caught by other validators
+        const sectionNorm = normalize(sectionText);
+        // Extract content words from the sentence (excluding the citation itself)
+        const sentenceClean = sentence
+          .replace(/\b(?:Section|Article|s\.|art\.)\s*\d+[A-Za-z]?/gi, "")
+          .toLowerCase()
+          .replace(/[^a-z0-9\s]/g, " ");
+        const words = sentenceClean
+          .split(/\s+/)
+          .filter(
+            (w) => w.length >= 4 && !GROUNDING_STOP.has(w)
+          );
+        if (words.length < 3) continue; // too little content to judge
+        // Count how many of the distinct content words appear in the section
+        const distinct = Array.from(new Set(words));
+        let hits = 0;
+        for (const w of distinct) {
+          if (sectionNorm.includes(w)) hits++;
+        }
+        // Require at least 2 content-word overlaps AND at least 25% of them
+        const overlapRatio = hits / distinct.length;
+        if (hits < 2 || overlapRatio < 0.25) {
+          failures.push({ num, sentence: sentence.slice(0, 160) });
+        }
+      }
+      return failures;
     }
 
     // Find every duration claim ("one week", "2 months", "30 days", etc.)
@@ -320,7 +498,7 @@ ${
       return invalid;
     }
 
-    const buildId = "v11";
+    const buildId = "v12-grounding";
     console.log(`[chat] build=${buildId} query="${query.slice(0, 60)}" allowlist=${validNumbers.size} chunks=${relevantChunks.length}`);
 
     // DIAG: how many quotes does the regex extract from any text?
@@ -333,7 +511,7 @@ ${
 
     let answer = await generate(systemPrompt);
 
-    // VALIDATION PASS 1: sections, quotes, and durations against the source context
+    // VALIDATION PASS 1: sections, quotes, durations, AND grounding
     if (context) {
       const citedSections = findCitations(answer);
       const invalidSections = Array.from(
@@ -341,15 +519,17 @@ ${
       );
       const invalidQuotes = findInvalidQuotes(answer, context);
       const invalidDurations = findInvalidDurations(answer, context);
+      const ungrounded = findUngroundedCitations(answer);
 
       console.log(
-        `[chat] pass1 cited=[${citedSections.join(",")}] invalidSections=[${invalidSections.join(",")}] invalidQuotes=${invalidQuotes.length} invalidDurations=${invalidDurations.length}`
+        `[chat] pass1 cited=[${citedSections.join(",")}] invalidSections=[${invalidSections.join(",")}] invalidQuotes=${invalidQuotes.length} invalidDurations=${invalidDurations.length} ungrounded=${ungrounded.length}`
       );
 
       if (
         invalidSections.length > 0 ||
         invalidQuotes.length > 0 ||
-        invalidDurations.length > 0
+        invalidDurations.length > 0 ||
+        ungrounded.length > 0
       ) {
         const problems: string[] = [];
         if (invalidSections.length > 0) {
@@ -367,17 +547,33 @@ ${
             `FABRICATED DURATIONS you wrote that DO NOT APPEAR LITERALLY in the sources: ${invalidDurations.join("; ")}. These exact values are not in the legal text.`
           );
         }
+        if (ungrounded.length > 0) {
+          const lines = ungrounded
+            .slice(0, 6)
+            .map(
+              (u) =>
+                `  - You cited Section ${u.num} for: "${u.sentence.slice(
+                  0,
+                  140
+                )}" — but Section ${u.num}'s actual text does not mention those concepts. You likely confused it with an adjacent section. Find the section number whose TITLE matches the substance of your claim and use that instead.`
+            )
+            .join("\n");
+          problems.push(
+            `SECTION-CONTENT MISMATCH — you cited a real section but attached the wrong claim to it:\n${lines}`
+          );
+        }
         console.log(`[chat] retry triggered: ${problems.length} problem(s)`);
         const correction = `${systemPrompt}\n\nYOUR PREVIOUS ATTEMPT CONTAINED HALLUCINATIONS:\n${problems.join(
           "\n"
-        )}\n\nRegenerate the answer. STRICT RULES:\n- Cite ONLY section numbers from the VALID SECTION NUMBERS list above.\n- Any text inside quotation marks MUST be a verbatim, character-for-character copy of text from the legal excerpts above. Do not paraphrase inside quotes. If you can't find the exact wording, do not use quotation marks at all — explain in your own words instead.\n- Quote durations, fines, and ages ONLY if they appear LITERALLY in the legal excerpts. Do not invent tiers or simplify multi-clause provisions.\n- If a provision has subsections (a), (b), (c), reproduce them all literally. Do not collapse them.\n- If the excerpts do not contain a specific number you would need, do not write any number — explain qualitatively and stop there.\n- Do not write phrases like "consult a lawyer", "review your contract", "seek legal advice", or any disclaimer.`;
+        )}\n\nRegenerate the answer. STRICT RULES:\n- Cite ONLY section numbers from the VALID SECTIONS list above.\n- Each section has a TITLE — the claim you attach to a section number must match that section's title. Do not swap adjacent numbers.\n- Any text inside quotation marks MUST be a verbatim, character-for-character copy of text from the legal excerpts above. Do not paraphrase inside quotes. If you can't find the exact wording, do not use quotation marks at all — explain in your own words instead.\n- Quote durations, fines, and ages ONLY if they appear LITERALLY in the legal excerpts. Do not invent tiers or simplify multi-clause provisions.\n- If a provision has subsections (a), (b), (c), reproduce them all literally. Do not collapse them.\n- If the excerpts do not contain a specific number you would need, do not write any number — explain qualitatively and stop there.\n- Do not write phrases like "consult a lawyer", "review your contract", "seek legal advice", or any disclaimer.`;
         answer = await generate(correction);
 
         const citedAfter = findCitations(answer);
         const invalidQuotesRetry = findInvalidQuotes(answer, context);
         const invalidDurationsRetry = findInvalidDurations(answer, context);
+        const ungroundedRetry = findUngroundedCitations(answer);
         console.log(
-          `[chat] retry result cited=[${citedAfter.join(",")}] invalidQuotes=${invalidQuotesRetry.length} invalidDurations=${invalidDurationsRetry.length}`
+          `[chat] retry result cited=[${citedAfter.join(",")}] invalidQuotes=${invalidQuotesRetry.length} invalidDurations=${invalidDurationsRetry.length} ungrounded=${ungroundedRetry.length}`
         );
       }
 
@@ -416,6 +612,30 @@ ${
           "gi"
         );
         answer = answer.replace(stripRe, "the statutory period");
+      }
+
+      // GROUNDING STRIP: any citation whose sentence content doesn't
+      // match the cited section's actual text gets the citation replaced
+      // with "the relevant provision". The claim survives but the wrong
+      // section number is removed — the user sees accurate substance
+      // instead of a confidently-wrong section pointer.
+      const ungroundedAfter = findUngroundedCitations(answer);
+      if (ungroundedAfter.length > 0) {
+        console.log(
+          `[chat] grounding strip: ${ungroundedAfter.length} ungrounded citation(s): ${ungroundedAfter
+            .map((u) => `s.${u.num}`)
+            .join(", ")}`
+        );
+        // Strip only the first occurrence of each ungrounded number in
+        // its surrounding sentence, so we don't accidentally touch a
+        // correct later reuse of the same number.
+        for (const u of ungroundedAfter) {
+          const stripRe = new RegExp(
+            `\\b(?:Section|Article|s\\.|art\\.)\\s*${u.num}\\b(?:\\s+of\\s+(?:the\\s+)?[A-Z][A-Za-z ()0-9]{2,60}Act[^.]*?)?`,
+            "i"
+          );
+          answer = answer.replace(stripRe, "the relevant provision");
+        }
       }
     }
 
@@ -476,6 +696,7 @@ ${
     const finalInvalidSectionCount = context
       ? findCitations(answer).filter((c) => !validNumbers.has(c)).length
       : 0;
+    const finalUngroundedCount = context ? findUngroundedCitations(answer).length : 0;
 
     return new Response(readable, {
       headers: {
@@ -487,6 +708,7 @@ ${
         "X-Quotes-Invalid": String(finalInvalidQuoteCount),
         "X-Cites-Total": String(finalCitationCount),
         "X-Cites-Invalid": String(finalInvalidSectionCount),
+        "X-Cites-Ungrounded": String(finalUngroundedCount),
         "X-Allowlist-Size": String(validNumbers.size),
         "X-Chunks": String(relevantChunks.length),
         "X-Context-Len": String(context.length),
