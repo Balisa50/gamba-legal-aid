@@ -312,7 +312,7 @@ ${
       return invalid;
     }
 
-    const buildId = "v8-debug-quotes";
+    const buildId = "v9-anchor-filter";
     console.log(`[chat] build=${buildId} query="${query.slice(0, 60)}" allowlist=${validNumbers.size} chunks=${relevantChunks.length}`);
 
     // DIAG: how many quotes does the regex extract from any text?
