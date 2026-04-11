@@ -312,8 +312,16 @@ ${
       return invalid;
     }
 
-    const buildId = "v7-hard-fail";
+    const buildId = "v8-debug-quotes";
     console.log(`[chat] build=${buildId} query="${query.slice(0, 60)}" allowlist=${validNumbers.size} chunks=${relevantChunks.length}`);
+
+    // DIAG: how many quotes does the regex extract from any text?
+    function countQuotes(text: string): number {
+      const re = /["\u201C]([^"\u201C\u201D]{10,400})["\u201D]/g;
+      let n = 0;
+      while (re.exec(text) !== null) n++;
+      return n;
+    }
 
     let answer = await generate(systemPrompt);
 
@@ -453,12 +461,27 @@ ${
       },
     });
 
+    // DIAG: final counts so we can SEE in headers what the validator is doing
+    const finalQuoteCount = countQuotes(answer);
+    const finalCitationCount = findCitations(answer).length;
+    const finalInvalidQuoteCount = context ? findInvalidQuotes(answer, context).length : 0;
+    const finalInvalidSectionCount = context
+      ? findCitations(answer).filter((c) => !validNumbers.has(c)).length
+      : 0;
+
     return new Response(readable, {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
         "Cache-Control": "no-cache",
         "X-Build": buildId,
         "X-Validation": validationFailed ? "hard-fail" : "passed",
+        "X-Quotes-Total": String(finalQuoteCount),
+        "X-Quotes-Invalid": String(finalInvalidQuoteCount),
+        "X-Cites-Total": String(finalCitationCount),
+        "X-Cites-Invalid": String(finalInvalidSectionCount),
+        "X-Allowlist-Size": String(validNumbers.size),
+        "X-Chunks": String(relevantChunks.length),
+        "X-Context-Len": String(context.length),
       },
     });
   } catch {
