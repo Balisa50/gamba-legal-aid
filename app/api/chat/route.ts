@@ -320,7 +320,7 @@ ${
       return invalid;
     }
 
-    const buildId = "v10-surface-error";
+    const buildId = "v11";
     console.log(`[chat] build=${buildId} query="${query.slice(0, 60)}" allowlist=${validNumbers.size} chunks=${relevantChunks.length}`);
 
     // DIAG: how many quotes does the regex extract from any text?
