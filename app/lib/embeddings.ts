@@ -214,9 +214,26 @@ export async function searchDocuments(
   for (const a of anchorSet) searchSet.add(a);
   const finalSearchTerms = Array.from(searchSet).slice(0, 20);
 
+  // CRITICAL: when we have high-signal terms (specific words like
+  // "immigration", "eviction"), restrict the SQL OR to those terms +
+  // anchors only. Including low-signal terms like "law" in the OR clause
+  // matches thousands of irrelevant chunks and exhausts the row limit
+  // before any relevant document is reached.
+  //
+  // When NO high-signal terms exist, fall back to the full term set.
+  let queryTerms: string[];
+  if (highSignalSet.size > 0) {
+    const focused = new Set<string>();
+    for (const t of highSignalSet) focused.add(t);
+    for (const a of anchorSet) focused.add(a);
+    queryTerms = Array.from(focused).slice(0, 20);
+  } else {
+    queryTerms = finalSearchTerms;
+  }
+
   // Run multiple ILIKE searches in parallel for speed
   // Search both content and section_title
-  const orConditions = finalSearchTerms
+  const orConditions = queryTerms
     .map((term) => `content.ilike.%${term}%,section_title.ilike.%${term}%`)
     .join(",");
 
