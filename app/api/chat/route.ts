@@ -4,6 +4,10 @@ import { searchDocuments } from "../../lib/embeddings";
 import { checkRateLimit } from "../../lib/ratelimit";
 import { sanitizeUserInput } from "../../lib/sanitize";
 
+// Allow up to 60 seconds — needed for Groq call + optional retry + word-by-word streaming.
+// Without this, Vercel's default 10-second limit kills the response mid-stream on longer answers.
+export const maxDuration = 60;
+
 export async function POST(req: NextRequest) {
   const ip =
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";

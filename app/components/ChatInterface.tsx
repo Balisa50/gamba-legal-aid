@@ -1,7 +1,70 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
+
+// ── Markdown renderer ─────────────────────────────────────────────────────────
+// Handles **bold**, bullet lines (- / • / *), and paragraph breaks.
+// Keeps it dependency-free while making AI answers readable.
+
+function renderBold(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*[^*\n]+?\*\*)/);
+  if (parts.length === 1) return text;
+  return (
+    <>
+      {parts.map((part, i) =>
+        part.startsWith("**") && part.endsWith("**") ? (
+          <strong key={i} className="font-semibold text-text-primary">
+            {part.slice(2, -2)}
+          </strong>
+        ) : (
+          part
+        )
+      )}
+    </>
+  );
+}
+
+function MessageContent({ text }: { text: string }) {
+  const lines = text.split(/\n/);
+  const nodes: React.ReactNode[] = [];
+  let listItems: string[] = [];
+  let nodeKey = 0;
+
+  const flushList = () => {
+    if (listItems.length === 0) return;
+    nodes.push(
+      <ul key={nodeKey++} className="my-2 space-y-1">
+        {listItems.map((item, i) => (
+          <li key={i} className="flex gap-2 leading-relaxed">
+            <span className="text-accent-green/50 mt-[3px] shrink-0 text-[10px]">●</span>
+            <span>{renderBold(item)}</span>
+          </li>
+        ))}
+      </ul>
+    );
+    listItems = [];
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (/^[-•*]\s/.test(trimmed)) {
+      listItems.push(trimmed.slice(2));
+    } else if (trimmed === "") {
+      flushList();
+    } else {
+      flushList();
+      nodes.push(
+        <p key={nodeKey++} className="leading-relaxed">
+          {renderBold(trimmed)}
+        </p>
+      );
+    }
+  }
+  flushList();
+
+  return <div className="space-y-1.5 text-sm">{nodes}</div>;
+}
 
 interface Message {
   role: "user" | "assistant";
@@ -60,6 +123,7 @@ export default function ChatInterface() {
     setSuggestions(pickQuestions(6));
   }, []);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // Persist messages to localStorage
@@ -69,9 +133,27 @@ export default function ChatInterface() {
     }
   }, [messages]);
 
+  // Smart scroll: instant (no animation) so repeated streaming calls don't fight each other.
+  // Always scrolls when the user just sent a message; during AI streaming only scrolls
+  // if the user is already near the bottom (i.e. hasn't manually scrolled up to read).
+  const scrollToBottom = useCallback((force = false) => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    if (force) {
+      el.scrollTop = el.scrollHeight;
+      return;
+    }
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distanceFromBottom < 140) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, []);
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    const lastMsg = messages[messages.length - 1];
+    // Force scroll when the user's own message appears (they just hit Send)
+    scrollToBottom(lastMsg?.role === "user");
+  }, [messages, scrollToBottom]);
 
   useEffect(() => {
     if (!loading) inputRef.current?.focus();
@@ -224,7 +306,7 @@ export default function ChatInterface() {
       )}
 
       {/* Messages area */}
-      <div className={`flex-1 min-h-0 px-4 pb-6 pt-2 space-y-6 overflow-y-auto hide-scrollbar ${messages.length === 0 ? "flex flex-col items-center justify-center" : ""}`}>
+      <div ref={scrollContainerRef} className={`flex-1 min-h-0 px-4 pb-6 pt-2 space-y-6 overflow-y-auto hide-scrollbar ${messages.length === 0 ? "flex flex-col items-center justify-center" : ""}`}>
         {messages.length === 0 ? (
           <div className="flex flex-col items-center text-center px-4">
             <div className="mb-6">
@@ -292,9 +374,13 @@ export default function ChatInterface() {
                     </span>
                   </div>
                 )}
-                <p className="text-sm leading-relaxed whitespace-pre-wrap">
-                  {msg.content}
-                </p>
+                {msg.role === "assistant" ? (
+                  <MessageContent text={msg.content} />
+                ) : (
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap">
+                    {msg.content}
+                  </p>
+                )}
               </div>
             </div>
           ))
